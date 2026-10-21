@@ -1,0 +1,19 @@
+name: sdm2
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - xarray=2026.7.0
+  - matplotlib
+  - netcdf4
+  - requests
+  - pydap
+  - copernicusmarine
+  - eumdac
+  - cartopy
+  - siphon
+  - pyresample
+  - pytorch
+  - scikit-learn
+prefix: /opt/miniconda3/envs/sdm2

@@ -150,7 +150,6 @@ vite.config.ts.timestamp-*
 
 output/
 targets/
-environment.yml
 
 .vscode/
 
