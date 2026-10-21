@@ -2,9 +2,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pandas as pd
 from sklearn.metrics import roc_auc_score
 from data.prepareDataset import preprocess_and_build
 from data.prepareCSVData import load_csv_data, SPECIES_LIST
+import json
+from pathlib import Path
 
 N_EPOCHS = 10
 
@@ -43,7 +46,7 @@ class SpeciesCNN(nn.Module):
         return torch.sigmoid(self.forward_logits(x))   # species pseudo-probabilities
 
     # prepare_data must be called before and its outputs serve as input + important for initializing model with correct num of input channels
-    def train_sdm(self, loaders, pi, device="cuda", epochs=N_EPOCHS):
+    def train_sdm(self, loaders, pi, device="cuda", epochs=N_EPOCHS, run_dir=None):
         """
         Train the CNN with the nnPU loss and keep the weights of the epoch with the best
         mean validation AUC.
@@ -66,12 +69,14 @@ class SpeciesCNN(nn.Module):
         sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[epochs // 2], gamma=0.1)
 
         # best-model tracking; -1.0 makes sure the first epoch counts as an improvement
-        best_auc, best_state = -1.0, None
+        best_auc, best_state, best_epoch = -1.0, None, None
+        history = []
 
         for epoch in range(epochs):
             # ---- training pass ----
             self.train()                       # dropout on, BatchNorm uses batch statistics
             running, n = 0.0, 0                # for the sample-weighted mean loss of this epoch
+            lr = opt.param_groups[0]["lr"]
             for x, y, w in loaders["train"]:
                 # x: (B, C, 13, 13) patches, y: (B, S) multi-hot labels, w: (B, S) de-clustering weights
                 x, y, w = x.to(device), y.to(device), w.to(device)
@@ -103,6 +108,8 @@ class SpeciesCNN(nn.Module):
                     if 0 < y[:, s].sum() < len(y)}
             mean_auc = float(np.mean(list(aucs.values()))) if aucs else float("nan")
 
+            history.append({"epoch": epoch, "lr": lr, "train_loss": running/n, "val_mean_auc": mean_auc, **{f"auc_{sp}": v for sp, v in aucs.items()}})
+
             # ---- keep the best epoch ----
             if mean_auc > best_auc:            # NaN compares False, so it never counts as an improvement
                 best_auc = mean_auc
@@ -116,7 +123,42 @@ class SpeciesCNN(nn.Module):
         # ---- restore the weights of the best epoch (not the last one) ----
         if best_state is not None:             # None if no epoch had a valid AUC
             self.load_state_dict(best_state)
+        self.history = pd.DataFrame(history)
+        self.best_epoch, self.best_auc = best_epoch, best_auc
+        if run_dir is not None:
+            self.save_run(run_dir, pi)
         return self
+
+    def save_run(self, run_dir, pi, extra=None):
+        run_dir = Path(run_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # weights of the best epoch (already loaded into self); save the state_dict, not the whole model
+        torch.save({k: v.cpu() for k, v in self.state_dict().items()}, run_dir / "model_best.pt")
+
+        self.history.to_csv(run_dir / "history.csv", index=False)
+
+        meta = {
+            "species_list": list(SPECIES_LIST),
+            "pi": pi.cpu().tolist(),
+            "best_epoch": self.best_epoch,
+            "best_val_mean_auc": self.best_auc,
+            "n_epochs": len(self.history),
+            **(extra or {}),      # e.g. fold, in_channels, use_mask, max_ratio, batch_size, seed
+        }
+        with open(run_dir / "meta.json", "w") as f:
+            json.dump(meta, f, indent=2)
+
+    @torch.no_grad()
+    def evaluate_sdm(self, loader, device="cuda"):
+        """Per-species AUC on one loader (e.g. the test split). Returns {species: auc}."""
+        self.to(device).eval()
+        logits, ys = [], []
+        for x, y, _ in loader:
+            logits.append(self(x.to(device)).cpu()); ys.append(y)
+        p, y = torch.cat(logits).sigmoid().numpy(), torch.cat(ys).numpy()
+        return {sp: float(roc_auc_score(y[:, s], p[:, s]))
+                for s, sp in enumerate(SPECIES_LIST) if 0 < y[:, s].sum() < len(y)}
 
 # ---------------------------------------------------------------- 3. Loss
 def species_weights(labels: np.ndarray, mask: np.ndarray):

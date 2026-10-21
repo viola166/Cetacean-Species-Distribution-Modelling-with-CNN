@@ -2,7 +2,6 @@ from torch.utils.data import DataLoader
 from data.prepareGridData import remove_skewness, normalize_channel
 from data.prepareCSVData import build_samples
 from data.OccurrenceDataset import OccurrenceDataset
-from data.prepareDataset import preprocess_and_build
 from data.prepareCSVData import load_csv_data
 from data.DataSplitter import DataSplitter
 from data.OceanData import OceanData
@@ -77,25 +76,25 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
     return data, loaders, pi
 
 
-def prepare_data(self, csv_data=None, channel_dss=None, split_csv_data_keys=None, incl_mask_channels=False):
-        # get CSV data
-        if csv_data is None:
-            csv_data = load_csv_data()
+def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl_mask_channels=False):
+    # get CSV data
+    if csv_data is None:
+        csv_data = load_csv_data()
 
-        # get data split
-        if split_csv_data_keys is None:
-            data_splitter = DataSplitter()
-            split_csv_data_keys = data_splitter.spatial_block_cv(csv_data=csv_data)
+    # get data split
+    if split_csv_data_keys is None:
+        data_splitter = DataSplitter()
+        split_csv_data_keys = data_splitter.spatial_block_cv(csv_data=csv_data)
 
-        # get grid data
-        if channel_dss is None:
-            grid_data_Accessor = OceanData(kinds=["all"])
-            channel_dss = grid_data_Accessor.fetch_data() # dict of all channel xarray Datasets
+    # get grid data
+    if channel_dss is None:
+        grid_data_Accessor = OceanData(kinds=["all"])
+        channel_dss = grid_data_Accessor.fetch_data() # dict of all channel xarray Datasets
 
-        # preprocess data in bring in correct format
-        data, loaders, pi = preprocess_and_build(csv_data, split_csv_data_keys[0], channel_dss, incl_mask_channels)     # for now only training the first split
+    # preprocess data in bring in correct format
+    data, loaders, pi = preprocess_and_build(csv_data, split_csv_data_keys[0], channel_dss, incl_mask_channels)     # for now only training the first split
 
-        return data, loaders, pi
+    return data, loaders, pi
 
 
 def get_num_in_channels(occurrence_ds):

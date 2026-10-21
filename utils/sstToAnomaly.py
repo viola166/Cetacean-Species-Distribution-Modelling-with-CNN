@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 import xarray as xr
 from utils.caching import subset_path
+from data.prepareGridData import to_target_grid
 
 _GROUPS = {
     "day": "time.dayofyear",
@@ -19,6 +20,7 @@ def climatology(data, path, frequency="day"):
         raise ValueError(f"No data inside the chosen period")
 
     clim = data.groupby(_GROUPS[frequency]).mean(dim="time")
+    clim = to_target_grid(clim)
     clim.to_netcdf(path)
     return clim
 
@@ -55,8 +57,9 @@ def get_sst_anomaly(data, spec, user_trange, full_trange, user_bbox, frequency="
     )
 
     sst_anomaly = subset.groupby(_GROUPS[frequency]) - clim
-    sst_anomaly_ds = sst_anomaly.to_dataset(name="sst_anomaly")
-    sst_anomaly_ds.to_netcdf(path)
+    sst_anomaly = to_target_grid(sst_anomaly)
+    # sst_anomaly_ds = sst_anomaly.to_dataset(name="sst_anomaly")
+    sst_anomaly.to_netcdf(path)
 
-    return sst_anomaly_ds
+    return sst_anomaly
 

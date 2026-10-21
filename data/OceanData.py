@@ -11,6 +11,7 @@ from utils.geoToEke import get_eke
 from utils.caching import subset_path
 from utils.swathData import regrid_to_common_grid, get_catalog_url, get_data_url
 from utils.standardize import standardize_coords, standardize_longitude
+from data.prepareGridData import to_target_grid
 import pandas as pd
 
 @dataclass(frozen=True)
@@ -27,14 +28,14 @@ REGISTRY = {
     "ph": DatasetSpec(
         short_name="ph",
         source="cmems",
-        location="cmems_mod_glo_bgc_my_0.25deg_P1M-m",
+        location="cmems_mod_glo_bgc_my_0.25deg_P1M-m",  # ONLY MONTHLY VARIABLE!!!
         names=("Sea Water pH Reported on Total Scale",),
         variables=("ph",),
     ),
     "salinity": DatasetSpec(
         short_name="salinity",
         source="cmems",
-        location="cmems_mod_glo_phy_my_0.083deg_P1M-m",  # verify with cm.describe()
+        location="cmems_mod_glo_phy_my_0.083deg_P1D-m",  # verify with cm.describe()
         names=("Sea Water Salinity",),
         variables=("so",),
     ),
@@ -165,10 +166,10 @@ REGISTRY = {
 
 # ---------- loaders: (spec, bbox, time_range) -> xr.Dataset ----------
 
-def load_cmems(spec, bbox, trange):
+def load_cmems(spec, bbox, trange, refresh):
     """Load a dataset from Copernicus Marine, crop to bbox and trange, cache to disk."""
     path = subset_path(spec=spec, bbox=bbox, trange=trange, name="raw")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
     lon0, lon1, lat0, lat1 = bbox
@@ -182,14 +183,17 @@ def load_cmems(spec, bbox, trange):
     ).load()  # actually download now, not lazily
     ds = standardize_coords(ds)  # ensure consistent lat/lon names and order
     ds = standardize_longitude(ds)  # ensure longitudes are in -180..180
+    if "depth" in ds.dims:
+        ds = ds.isel(depth=0) 
+    ds = to_target_grid(ds)
     ds.to_netcdf(path)
     return ds
 
 
-def load_opendap(spec, bbox, trange):
+def load_opendap(spec, bbox, trange, refresh):
     """Load a dataset from an OPeNDAP URL, crop to bbox and trange, cache to disk."""
     path = subset_path(spec=spec, bbox=bbox, trange=trange, name="raw")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
     # access complete dataset
@@ -214,13 +218,17 @@ def load_opendap(spec, bbox, trange):
     )
     if "time" in ds.dims:                           # bathymetry has no time axis
         ds = ds.sel(time=slice(*trange))
+    if "depth" in ds.dims:
+        ds = ds.isel(depth=0) 
+
+    ds = to_target_grid(ds)
 
     subset = ds[list(spec.variables)]
     subset.to_netcdf(path)
     return subset
 
 
-def load_ifremer_sst(spec, bbox, trange):
+def load_ifremer_sst(spec, bbox, trange, refresh):
     """Load IFREMER SST swath data, regrid to a common grid, cache to disk."""
     start, end = trange
     days = pd.date_range(start, end, freq="D")  # inclusive on both ends
@@ -273,7 +281,7 @@ def load_ifremer_sst(spec, bbox, trange):
     return xr.concat(daily, dim="time").sortby("time")
 
 
-def load_any(spec, bbox, trange):
+def load_any(spec, bbox, trange, refresh):
     """Load a dataset from any source, crop to bbox and trange, cache to disk."""
     # (keep the user's requested ranges for cropping afterwards)
     user_bbox, user_trange = bbox, trange
@@ -285,7 +293,7 @@ def load_any(spec, bbox, trange):
     bbox = widen_bbox(bbox, spec.options.get("wide_bbox"))
     trange = widen_trange(trange, spec.options.get("clim_period"), time_offset)
 
-    ds = LOADERS[spec.source](spec, bbox, trange)
+    ds = LOADERS[spec.source](spec, bbox, trange, refresh)
     # apply any post-processing function (e.g. climatology, anomaly, EKE, thermal fronts)
     fn_name = spec.options.get("function")
     if fn_name is not None:
@@ -300,6 +308,8 @@ def load_any(spec, bbox, trange):
         if bbox != user_bbox:
             kwargs["wider_bbox"] = bbox
         ds = PROCESSORS[fn_name](ds, **kwargs)
+
+    print("got", spec.short_name)
 
     return ds
 
@@ -331,7 +341,8 @@ class OceanData:
         maximum_latitude=38.5,
         start_dt="2008-05-01T00:00:00",         # extend of available csv data
         end_dt="2018-12-31T00:00:00",
-        # cache_dir="output"
+        # cache_dir="output",
+        refresh = False,
     ):
         if isinstance(kinds, str):
             kinds = [kinds]
@@ -350,6 +361,7 @@ class OceanData:
         self.min_lon, self.max_lon = minimum_longitude, maximum_longitude
         self.min_lat, self.max_lat = minimum_latitude, maximum_latitude
         self.start_dt, self.end_dt = start_dt, end_dt
+        self.refresh = refresh
         self._ds = {}   # kind -> xarray.Dataset, filled lazily
   
     def fetch_data(self):
@@ -358,7 +370,7 @@ class OceanData:
         trange = (self.start_dt, self.end_dt)
         for kind, spec in self.specs.items():
             if kind not in self._ds:
-                self._ds[kind] = load_any(spec, bbox, trange)
+                self._ds[kind] = load_any(spec, bbox, trange, self.refresh)
         return self._ds
 
     def insert_data(self, kind, ds):

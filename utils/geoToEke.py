@@ -1,5 +1,6 @@
 import xarray as xr
 from utils.caching import subset_path
+from data.prepareGridData import to_target_grid
 
 _GROUPS = {
     "day": "time.dayofyear",
@@ -16,6 +17,7 @@ def climatology(data, path, frequency="day"):
         raise ValueError("No data to compute a climatology from")
     
     clim = data.groupby(_GROUPS[frequency]).mean(dim="time")
+    clim = to_target_grid(clim)
     clim.to_netcdf(path)
     return clim
 
@@ -65,5 +67,6 @@ def get_eke(data, spec, user_trange, full_trange, user_bbox, frequency="day"):
     # 4. EKE, returned as a Dataset to keep the Dataset -> Dataset contract
     eke = (0.5 * (anom[u_name]**2 + anom[v_name]**2)).rename("eke")
     eke_ds = eke.to_dataset()
+    eke_ds = to_target_grid(eke_ds)
     eke_ds.to_netcdf(path)
     return eke_ds
