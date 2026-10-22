@@ -11,6 +11,7 @@ from utils.geoToEke import get_eke
 from utils.caching import subset_path
 from utils.swathData import regrid_to_common_grid, get_catalog_url, get_data_url
 from utils.standardize import standardize_coords, standardize_longitude
+from utils.bathToDist import get_dist_to_coast
 from data.prepareGridData import to_target_grid
 import pandas as pd
 
@@ -160,6 +161,17 @@ REGISTRY = {
         location="https://tds0.ifremer.fr/thredds/catalog/",
         names=("Merged High-Resolution SST composite",),
         variables=None,
+    ),
+    "dist_to_coast": DatasetSpec(
+        short_name="d_coast",
+        source="opendap",
+        location="https://dap.ceda.ac.uk/"
+                    "thredds/dodsC/bodc/gebco/global/gebco_2026/sub_ice_topography_bathymetry/netcdf/GEBCO_2026_sub_ice.nc",
+        names=("Distance to Coast",),
+        variables=("elevation",),
+        options={
+            "function": "get_dist_to_coast",
+        }
     )
 
 }
@@ -325,6 +337,7 @@ PROCESSORS = {
     "get_front_channels": get_front_channels,
     "get_sst_anomaly": get_sst_anomaly,
     "get_front_frequency": get_front_frequency,
+    "get_dist_to_coast": get_dist_to_coast,
 }
 
 

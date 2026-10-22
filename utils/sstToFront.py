@@ -236,7 +236,7 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange):
     da = da.sel(latitude=slice(min_lat, max_lat), longitude=slice(min_lon, max_lon))
 
     # one variable per channel, matching the "outputs" contract used elsewhere
-    out = da.to_dataset(dim="channel", name="front_channels")
+    out = da.to_dataset(dim="channel")
     out = to_target_grid(out)
     out.to_netcdf(path)
     return out

@@ -38,14 +38,14 @@ class DataSplitter:
         self.use_val = use_val
         self.seed = seed
 
-    def split(self, data):
-        """
-        Split the data into training, validation, and test sets based on spatial blocks (tiles).
-        Returns a list of dictionaries, each containing the keys 'fold', 'train', 'val', and 'test'.
-        """
+    # def split(self, data):
+    #     """
+    #     Split the data into training, validation, and test sets based on spatial blocks (tiles).
+    #     Returns a list of dictionaries, each containing the keys 'fold', 'train', 'val', and 'test'.
+    #     """
 
-        tile_id = self.assign_tiles_to_pixels(self.n_pixels, self.spatial_buffer)
-        return self.spatial_block_cv(data, tile_id, self.n_folds, self.use_val, self.seed)
+    #     tile_id = self.assign_tiles_to_pixels(n_pixels=self.n_pixels, spatial_buffer=self.spatial_buffer)
+    #     return self.spatial_block_cv(data, tile_id, self.n_folds, self.use_val, self.seed)
 
 
     # grid is subdivided into tiles of TILE_PIXELS_PER_TILE x TILE_PIXELS_PER_TILE degrees, and each data point 
