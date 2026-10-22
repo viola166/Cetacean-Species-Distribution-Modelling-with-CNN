@@ -397,13 +397,25 @@ def make_patches(norm_dss, mask_dss, lat, lon, time, size=NUMBER_OF_PIXELS_PER_P
 
     chans = []
     for k, nds in enumerate(norm_dss):
-        p = extract_patch(nds, lat, lon, time, size).fillna(0.0)   # off-grid -> 0 (= training mean)
+        t = lead_time(nds, time, list(nds.data_vars))
+        p = extract_patch(nds, lat, lon, t, size).fillna(0.0)   # off-grid -> 0 (= training mean)
         chans += [p[v].values for v in nds.data_vars]
 
         if mask_dss is not None:
             mds = mask_dss[k]
-            m = extract_patch(mds, lat, lon, time, size).fillna(0.0)   # off-grid -> 0 (= invalid)
+            m = extract_patch(mds, lat, lon, t, size).fillna(0.0)   # off-grid -> 0 (= invalid)
             chans += [m[v].values for v in mds.data_vars]
 
     return np.stack(chans).astype(np.float32)                     # (2C, size, size)
+
+
+CHL_LEAD = pd.Timedelta(weeks=12)
+
+def lead_time(ds, time, var_names):
+    """Return time + 12 weeks for CHL if that falls inside ds's time range, else the original time."""
+    if "CHL" not in var_names:
+        return time
+    t_new = pd.Timestamp(time) + CHL_LEAD
+    t_min, t_max = pd.Timestamp(ds.time.values.min()), pd.Timestamp(ds.time.values.max())
+    return t_new if t_min <= t_new <= t_max else time
 
