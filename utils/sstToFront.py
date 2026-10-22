@@ -4,6 +4,7 @@ import xarray as xr
 from utils.cayulaCornillon import CCA_SIED
 from utils.caching import subset_path
 from utils.dateConverter import date_to_index
+from data.prepareGridData import to_target_grid
 import pandas as pd
 
 
@@ -236,6 +237,7 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange):
 
     # one variable per channel, matching the "outputs" contract used elsewhere
     out = da.to_dataset(dim="channel", name="front_channels")
+    out = to_target_grid(out)
     out.to_netcdf(path)
     return out
 
@@ -298,5 +300,6 @@ def get_front_frequency(data, spec, user_bbox, wider_bbox, user_trange, full_tra
         longitude=slice(min_lon, max_lon),
     )
     freq_ds = freq.to_dataset(name="front_frequency")
+    freq_ds = to_target_grid(freq_ds)
     freq_ds.to_netcdf(path)
     return freq_ds
