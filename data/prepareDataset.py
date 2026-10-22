@@ -46,8 +46,11 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
     # ---- 1. Preprocess each channel dataset ----
     norm_dss, mask_dss = {}, {}
     for name, ds in channel_dss.items():
+        print("in preprocessing loop")
         ds_t, _ = remove_skewness(ds, csv_data, split, verbose=False)        # decided on train records
+        print("removed skewness")
         n, m, _ = normalize_channel(ds_t, csv_data, split, verbose=False)    # fitted on train records
+        print("normalized channel")
         norm_dss[name] = n
         mask_dss[name] = m
 
@@ -56,16 +59,24 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
     else:
         mask_dss_list = list(mask_dss.values())
 
+    print("preprocessing done")
+
     # ---- 2. Labels, weights and sample coordinates (only the extents of the raw datasets are used) ----
     samples = build_samples(csv_data, split, channel_dss, time_res=time_res)
+
+    print("samples built (not combined with X yet)")
 
     # ---- 3. One patch per sample; values are taken in the same (dict) order for norm and mask ----
     data = {name: OccurrenceDataset(Y, W, meta, list(norm_dss.values()), mask_dss_list)
             for name, (Y, W, meta) in samples.items()}
 
+    print("Occurrence Data built (X, Y, W, meta combined)")
+
     # ---- 4. Weighted class prior for nnPU ----
     Y_tr, W_tr = data["train"].Y, data["train"].W
     pi = ((W_tr * Y_tr).sum(0) / W_tr.sum(0)).clamp(1e-3, 1 - 1e-3)
+
+    print("pi initialized")
 
     # ---- 5. DataLoaders ----
     loaders = {
@@ -73,6 +84,9 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
         **{k: DataLoader(v, batch_size=batch_size, shuffle=False)
            for k, v in data.items() if k != "train"},
     }
+
+    print("loaders created")
+
     return data, loaders, pi
 
 
@@ -90,6 +104,8 @@ def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl
     if channel_dss is None:
         grid_data_Accessor = OceanData(kinds=["all"])
         channel_dss = grid_data_Accessor.fetch_data() # dict of all channel xarray Datasets
+
+    print("got csv, split, and channel_dss")
 
     # preprocess data in bring in correct format
     data, loaders, pi = preprocess_and_build(csv_data, split_csv_data_keys[0], channel_dss, incl_mask_channels)     # for now only training the first split
