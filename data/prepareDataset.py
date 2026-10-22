@@ -8,7 +8,7 @@ from data.OceanData import OceanData
 from pathlib import Path
 
 
-def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False, time_res="D", batch_size=256):
+def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False, time_res="D", batch_size=64):
     """
     Build everything needed to train and evaluate on ONE cross-validation fold:
     preprocessed channels, labelled datasets (patches + labels + weights) and DataLoaders.

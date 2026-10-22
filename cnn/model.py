@@ -77,7 +77,10 @@ class SpeciesCNN(nn.Module):
             self.train()                       # dropout on, BatchNorm uses batch statistics
             running, n = 0.0, 0                # for the sample-weighted mean loss of this epoch
             lr = opt.param_groups[0]["lr"]
-            for x, y, w in loaders["train"]:
+
+            n_batches = len(loaders["train"])
+            log_every = max(1, n_batches // 10)  
+            for i, (x, y, w) in enumerate(loaders["train"]):
                 # x: (B, C, 13, 13) patches, y: (B, S) multi-hot labels, w: (B, S) de-clustering weights
                 x, y, w = x.to(device), y.to(device), w.to(device)
 
@@ -89,6 +92,10 @@ class SpeciesCNN(nn.Module):
 
                 running += loss.item() * x.size(0)     # x.size(0) = actual batch size B
                 n += x.size(0)
+
+                if i % log_every == 0:
+                    print(f"  ep {epoch} batch {i}/{n_batches} loss {loss.item():.4f} "
+                    f"running {running / n:.4f}", flush=True)
             sched.step()                       # advance the LR schedule once per epoch (after the optimizer steps)
 
             # ---- validation pass ----

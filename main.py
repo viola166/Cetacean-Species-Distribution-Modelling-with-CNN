@@ -17,9 +17,10 @@ data, loaders, pi = prepare_data(channel_dss=channel_dss)
 in_channels = get_num_in_channels(data)
 
 model = SpeciesCNN(in_channels=in_channels)
-model = model.train_sdm(loaders=loaders, pi=pi)
 
 run_dir = Path("runs/nnpu_fold_0")
+run_dir.mkdir(parents=True, exist_ok=True)
+
 model.train_sdm(loaders, pi, run_dir=run_dir)
 
 test_auc = model.evaluate_sdm(loaders["test"])          # evaluate once, after model selection
