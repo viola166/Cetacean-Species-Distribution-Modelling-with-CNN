@@ -14,6 +14,7 @@ from utils.standardize import standardize_coords, standardize_longitude
 from utils.bathToDist import get_dist_to_coast
 from data.prepareGridData import to_target_grid
 import pandas as pd
+import time
 
 @dataclass(frozen=True)
 class DatasetSpec:
@@ -123,7 +124,7 @@ REGISTRY = {
         }
     ),
     "thermal_front_freq": DatasetSpec(
-        short_name="thermal_fronts",
+        short_name="front_freqency",
         source="cmems",
         location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
         names=("Frequency of Thermal Fronts",),
@@ -177,6 +178,23 @@ REGISTRY = {
 }
 
 # ---------- loaders: (spec, bbox, time_range) -> xr.Dataset ----------
+def robust_load(ds, retries=5, wait=10):
+    for i in range(retries):
+        try:
+            return ds.load()
+        except Exception as e:  # requests.ConnectionError / TimeoutError
+            if i == retries - 1:
+                raise
+            print(f"Attempt {i+1} failed ({e.__class__.__name__}), retrying in {wait*(i+1)}s")
+            time.sleep(wait * (i + 1))
+
+def load_in_time_chunks(ds, step=30):
+    parts = []
+    for i in range(0, ds.sizes["time"], step):
+        print(i)
+        parts.append(robust_load(ds.isel(time=slice(i, i + step))))
+    return xr.concat(parts, dim="time")
+
 
 def load_cmems(spec, bbox, trange, refresh):
     """Load a dataset from Copernicus Marine, crop to bbox and trange, cache to disk."""
@@ -229,7 +247,7 @@ def load_opendap(spec, bbox, trange, refresh):
         latitude=slice(lat0, lat1)
     )
     if "time" in ds.dims:                           # bathymetry has no time axis
-        ds = ds.sel(time=slice(*trange))
+        ds = load_in_time_chunks(ds)
     if "depth" in ds.dims:
         ds = ds.isel(depth=0) 
 
