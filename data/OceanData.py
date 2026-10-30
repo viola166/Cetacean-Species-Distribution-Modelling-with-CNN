@@ -188,10 +188,15 @@ def robust_load(ds, retries=5, wait=10):
             print(f"Attempt {i+1} failed ({e.__class__.__name__}), retrying in {wait*(i+1)}s")
             time.sleep(wait * (i + 1))
 
-def load_in_time_chunks(ds, step=30):
+def load_in_time_chunks(ds, trange, step=30):
+    ds = ds.sel(time=slice(*trange))          # label-based: dates, inclusive on both ends
+    n = ds.sizes["time"]
+    if n == 0:
+        raise ValueError(f"No data in time range {trange}")
+
     parts = []
-    for i in range(0, ds.sizes["time"], step):
-        print(i)
+    for i in range(0, n, step):               # integer positions from here on
+        print(f"Loading time steps {i}-{min(i + step, n)} of {n}")
         parts.append(robust_load(ds.isel(time=slice(i, i + step))))
     return xr.concat(parts, dim="time")
 
@@ -247,7 +252,7 @@ def load_opendap(spec, bbox, trange, refresh):
         latitude=slice(lat0, lat1)
     )
     if "time" in ds.dims:                           # bathymetry has no time axis
-        ds = load_in_time_chunks(ds)
+        ds = load_in_time_chunks(ds=ds, trange=trange)
     if "depth" in ds.dims:
         ds = ds.isel(depth=0) 
 
