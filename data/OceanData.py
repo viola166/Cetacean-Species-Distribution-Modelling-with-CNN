@@ -15,6 +15,7 @@ from utils.bathToDist import get_dist_to_coast
 from data.prepareGridData import to_target_grid
 import pandas as pd
 import time
+from datetime import date
 
 @dataclass(frozen=True)
 class DatasetSpec:
@@ -25,157 +26,7 @@ class DatasetSpec:
     variables: tuple | None
     options: dict = field(default_factory=dict)   # source-specific extras
 
-# One entry per kind of ocean data. Add new kinds here, nowhere else.
-REGISTRY = {
-    "ph": DatasetSpec(
-        short_name="ph",
-        source="cmems",
-        location="cmems_mod_glo_bgc_my_0.25deg_P1M-m",  # ONLY MONTHLY VARIABLE!!!
-        names=("Sea Water pH Reported on Total Scale",),
-        variables=("ph",),
-    ),
-    "salinity": DatasetSpec(
-        short_name="salinity",
-        source="cmems",
-        location="cmems_mod_glo_phy_my_0.083deg_P1D-m",  # verify with cm.describe()
-        names=("Sea Water Salinity",),
-        variables=("so",),
-    ),
-    "sst_low": DatasetSpec(
-        short_name="sst_low",
-        source="cmems",
-        location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
-        names=("Foundation Sea Surface Temperature",),
-        variables=("analysed_sst",),
-    ),
-    "geo_velocity": DatasetSpec(
-        short_name="geo_velo",
-        source="cmems",
-        location="cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
-        names=(
-            "Absolut East-West Geostrophic Velocity", 
-            "Absolut North-South Geostrophic Velocity", 
-            "Anomaly East-West Geostrophic Velocity",
-            "Anomaly North-South Geostrophic Velocity"
-        ),
-        variables=("ugos", "vgos", "ugosa", "vgosa"),
-    ),
-    "chlorophyll": DatasetSpec(
-        short_name="chl",
-        source="cmems",
-        location="cmems_obs-oc_atl_bgc-plankton_my_l4-gapfree-multi-1km_P1D",
-        names=("Mass Concentration of Chlorophyll-a in Sea Water",),
-        variables=("CHL",),
-    ),
-    "oxygen": DatasetSpec(
-        short_name="o2",
-        source="cmems",
-        location="cmems_mod_glo_bgc_my_0.25deg_P1D-m",
-        names=("Mole Concentration of Dissolved Molecular Oxygen in Sea Water",),
-        variables=("o2",),
-    ),
-    "wind": DatasetSpec(
-        short_name="wind",
-        source="cmems",
-        location="cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H",
-        names=("Sea Surface East-West Wind Speed", "Sea Surface North-South Wind Speed"),
-        variables=("eastward_wind", "northward_wind"),
-    ),
-    "bathymetry": DatasetSpec(
-        short_name="bathymetry",
-        source="opendap",
-        location="https://dap.ceda.ac.uk/"
-                    "thredds/dodsC/bodc/gebco/global/gebco_2026/sub_ice_topography_bathymetry/netcdf/GEBCO_2026_sub_ice.nc",
-        names=("Bathymetry",),
-        variables=("elevation",),
-    ),
-    "fsle": DatasetSpec(
-        short_name="fsle",
-        source="opendap",
-        location="http://tds-odatis.aviso.altimetry.fr/"
-                "thredds/dodsC/dataset-duacs-dt-global-allsat-madt-fsle",
-        names=("FSLE",),
-        variables=("fsle_max",),
-    ),
-    "sst_anomaly": DatasetSpec(
-        short_name="sst_a",
-        source="cmems",
-        location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
-        names=("Sea Surface Temperature Anomaly",),
-        variables=("analysed_sst",),
-        # define hyperparameters for climatological means here
-        options={
-            "clim_period": ("1981-10-01T00:00:00", "2026-03-31T00:00:00"),
-            "function": "get_sst_anomaly", 
-            "function_kwargs": {
-                "frequency": "day",
-            }
-        }
-    ),
-    "thermal_fronts": DatasetSpec(
-        short_name="thermal_fronts",
-        source="cmems",
-        location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
-        names=("Distance to Thermal Fronts", "Density of Thermal Fronts", "Gradient of Thermal Fronts"),
-        variables=("analysed_sst",),
-        options={
-            "wide_bbox": (-27.5, -23.5, 35.8, 39.8),                       # necessary margin to compute CCA, always required (for standard bbox that is to small)
-            "function" : "get_front_channels",
-        }
-    ),
-    "thermal_front_freq": DatasetSpec(
-        short_name="front_freqency",
-        source="cmems",
-        location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
-        names=("Frequency of Thermal Fronts",),
-        variables=("analysed_sst",),
-        options={
-            "window": 30,
-            "wide_bbox": (-27.5, -23.5, 35.8, 39.8),
-            "function": "get_front_frequency",
-            "function_kwargs": {
-                "window": 30,
-                "smooth_sigma": 1.0,
-            }
-        }
-    ),
-    "eddy_kinetic_e": DatasetSpec(
-        short_name="eke",
-        source="cmems",
-        location="cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
-        names=(
-            "Eddy Kinetic Energy",
-        ),
-        variables=("ugos", "vgos"),
-        # define hyperparameters for subset and climatological means here
-        options={
-            "clim_period": ("1993-01-01T00:00:00", "2026-01-16T00:00:00"),
-            "function": "get_eke", 
-            "function_kwargs": {
-                "frequency": "day", 
-            }
-        }
-    ),
-    "sst_high": DatasetSpec(
-        short_name="sst_high",
-        source="ifremer_sst",
-        location="https://tds0.ifremer.fr/thredds/catalog/",
-        names=("Merged High-Resolution SST composite",),
-        variables=None,
-    ),
-    "dist_to_coast": DatasetSpec(
-        short_name="d_coast",
-        source="opendap",
-        location="https://dap.ceda.ac.uk/"
-                    "thredds/dodsC/bodc/gebco/global/gebco_2026/sub_ice_topography_bathymetry/netcdf/GEBCO_2026_sub_ice.nc",
-        names=("Distance to Coast",),
-        variables=("elevation",),
-        options={
-            "function": "get_dist_to_coast",
-        }
-    )
 
-}
 
 # ---------- loaders: (spec, bbox, time_range) -> xr.Dataset ----------
 def robust_load(ds, retries=5, wait=10):
@@ -214,12 +65,21 @@ def load_cmems(spec, bbox, trange, refresh):
         variables=list(spec.variables),
         minimum_longitude=lon0, maximum_longitude=lon1,
         minimum_latitude=lat0, maximum_latitude=lat1,
-        start_datetime=trange[0], end_datetime=trange[1],
-    ).load()  # actually download now, not lazily
+        # start_datetime=trange[0], end_datetime=trange[1],
+    )
+    start, end = (pd.Timestamp(t).normalize() for t in trange)
+    today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
+    if start == end and start >= today:                                 # forecast request
+        ds = ds.sel(time=[pd.Timestamp(trange[0])], method="nearest")
+    else:
+        ds = ds.sel(time=slice(*trange))
+    if "depth" in ds.dims:
+        ds = ds.isel(depth=0)
+    
+    ds = ds.load() # actually download now, not lazily
     ds = standardize_coords(ds)  # ensure consistent lat/lon names and order
     ds = standardize_longitude(ds)  # ensure longitudes are in -180..180
-    if "depth" in ds.dims:
-        ds = ds.isel(depth=0) 
+
     ds = to_target_grid(ds)
     ds.to_netcdf(path)
     return ds
@@ -251,11 +111,17 @@ def load_opendap(spec, bbox, trange, refresh):
         longitude=slice(lon0, lon1), 
         latitude=slice(lat0, lat1)
     )
+    start, end = (pd.Timestamp(t).normalize() for t in trange)
+    today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
     if "time" in ds.dims:                           # bathymetry has no time axis
-        ds = load_in_time_chunks(ds=ds, trange=trange)
+        if start == end and start >= today:         # forecast request
+            ds = ds.sel(time=[pd.Timestamp(trange[0])], method="nearest") # load lazily for one day time slice
+        else:
+            ds = load_in_time_chunks(ds=ds, trange=trange)                # load in chunks for time periods
     if "depth" in ds.dims:
-        ds = ds.isel(depth=0) 
+        ds = ds.isel(depth=0)
 
+    ds = ds.load()
     ds = to_target_grid(ds)
 
     subset = ds[list(spec.variables)]
@@ -265,41 +131,49 @@ def load_opendap(spec, bbox, trange, refresh):
 
 def load_ifremer_sst(spec, bbox, trange, refresh):
     """Load IFREMER SST swath data, regrid to a common grid, cache to disk."""
-    start, end = trange
-    days = pd.date_range(start, end, freq="D")  # inclusive on both ends
-    session = requests.Session()
-    daily = []
+    start, end = (pd.Timestamp(t).normalize() for t in trange)
+    today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
 
-    for d in days:
+    if start == end and start >= today:
+        # forecast request: today's swath data is incomplete, use yesterday
+        days = pd.DatetimeIndex([today - pd.Timedelta(days=1)])
+    else:
+        days = pd.date_range(start, end, freq="D")                      # inclusive on both ends 
+
+    session = requests.Session()
+    daily = []       
+
+    for d in days:                                                      # only one iteration for ForecastData
         day = d.strftime("%Y-%m-%d")
         path = subset_path(spec=spec, bbox=bbox, trange=(day, day), name="raw")
 
         # 1) cached day
-        if path.exists():
+        if path.exists() and refresh is False:
             daily.append(xr.load_dataset(path))
             continue
         # 2) download + regrid
-        ds_one_day = []
+        dss_one_day = []
         try:
             catalog = get_catalog_url(d)
             data_urls = get_data_url(bbox, catalog)
 
-            ds_one_day = [
+            dss_one_day = [
                 xr.open_dataset(url, engine="pydap", session=session)
                 for url in data_urls
             ]
-            if not ds_one_day:
+            if not dss_one_day:
                 print(f"Skipping {d:%Y-%m-%d}: no datasets found")
                 continue
-            ds_one_day = [standardize_coords(ds) for ds in ds_one_day]
-            ds_one_day = [standardize_longitude(ds) for ds in ds_one_day]
-            day_ds = regrid_to_common_grid(ds_one_day, bbox, spec)
+            dss_one_day = [standardize_coords(ds) for ds in dss_one_day]
+            dss_one_day = [standardize_longitude(ds) for ds in dss_one_day]
+            day_ds = day_ds.load()
+            day_ds = regrid_to_common_grid(dss_one_day, bbox, spec)
 
         except Exception as e:  # missing catalog, 404, network error, ...
             print(f"Skipping {d:%Y-%m-%d}: {e}")
             continue
         finally:
-            for ds in ds_one_day:
+            for ds in dss_one_day:
                 ds.close()
 
         day_ds = day_ds.expand_dims(time=[pd.Timestamp(day)])
@@ -368,6 +242,157 @@ PROCESSORS = {
 # ---------------------class to access all data---------------------
 
 class OceanData:
+    # One entry per kind of ocean data. Add new kinds here, nowhere else.
+    REGISTRY = {
+        "ph": DatasetSpec(
+            short_name="ph",
+            source="cmems",
+            location="cmems_mod_glo_bgc_my_0.25deg_P1M-m",  # ONLY MONTHLY VARIABLE!!!
+            names=("Sea Water pH Reported on Total Scale",),
+            variables=("ph",),
+        ),
+        "salinity": DatasetSpec(
+            short_name="salinity",
+            source="cmems",
+            location="cmems_mod_glo_phy_my_0.083deg_P1D-m",  # verify with cm.describe()
+            names=("Sea Water Salinity",),
+            variables=("so",),
+        ),
+        "sst_low": DatasetSpec(
+            short_name="sst_low",
+            source="cmems",
+            location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
+            names=("Foundation Sea Surface Temperature",),
+            variables=("analysed_sst",),
+        ),
+        "geo_velocity": DatasetSpec(
+            short_name="geo_velo",
+            source="cmems",
+            location="cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
+            names=(
+                "Absolut East-West Geostrophic Velocity", 
+                "Absolut North-South Geostrophic Velocity", 
+                "Anomaly East-West Geostrophic Velocity",
+                "Anomaly North-South Geostrophic Velocity"
+            ),
+            variables=("ugos", "vgos", "ugosa", "vgosa"),
+        ),
+        "chlorophyll": DatasetSpec(
+            short_name="chl",
+            source="cmems",
+            location="cmems_obs-oc_atl_bgc-plankton_my_l4-gapfree-multi-1km_P1D",
+            names=("Mass Concentration of Chlorophyll-a in Sea Water",),
+            variables=("CHL",),
+        ),
+        "oxygen": DatasetSpec(
+            short_name="o2",
+            source="cmems",
+            location="cmems_mod_glo_bgc_my_0.25deg_P1D-m",
+            names=("Mole Concentration of Dissolved Molecular Oxygen in Sea Water",),
+            variables=("o2",),
+        ),
+        "wind": DatasetSpec(
+            short_name="wind",
+            source="cmems",
+            location="cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H",
+            names=("Sea Surface East-West Wind Speed", "Sea Surface North-South Wind Speed"),
+            variables=("eastward_wind", "northward_wind"),
+        ),
+        "bathymetry": DatasetSpec(
+            short_name="bathymetry",
+            source="opendap",
+            location="https://dap.ceda.ac.uk/"
+                        "thredds/dodsC/bodc/gebco/global/gebco_2026/sub_ice_topography_bathymetry/netcdf/GEBCO_2026_sub_ice.nc",
+            names=("Bathymetry",),
+            variables=("elevation",),
+        ),
+        "fsle": DatasetSpec(
+            short_name="fsle",
+            source="opendap",
+            location="http://tds-odatis.aviso.altimetry.fr/"
+                    "thredds/dodsC/dataset-duacs-dt-global-allsat-madt-fsle",
+            names=("FSLE",),
+            variables=("fsle_max",),
+        ),
+        "sst_anomaly": DatasetSpec(
+            short_name="sst_a",
+            source="cmems",
+            location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
+            names=("Sea Surface Temperature Anomaly",),
+            variables=("analysed_sst",),
+            # define hyperparameters for climatological means here
+            options={
+                "clim_period": ("1981-10-01T00:00:00", "2026-03-31T00:00:00"),
+                "function": "get_sst_anomaly", 
+                "function_kwargs": {
+                    "frequency": "day",
+                }
+            }
+        ),
+        "thermal_fronts": DatasetSpec(
+            short_name="thermal_fronts",
+            source="cmems",
+            location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
+            names=("Distance to Thermal Fronts", "Density of Thermal Fronts", "Gradient of Thermal Fronts"),
+            variables=("analysed_sst",),
+            options={
+                "wide_bbox": (-27.5, -23.5, 35.8, 39.8),                       # necessary margin to compute CCA, always required (for standard bbox that is to small)
+                "function" : "get_front_channels",
+            }
+        ),
+        "thermal_front_freq": DatasetSpec(
+            short_name="front_freqency",
+            source="cmems",
+            location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
+            names=("Frequency of Thermal Fronts",),
+            variables=("analysed_sst",),
+            options={
+                "window": 30,
+                "wide_bbox": (-27.5, -23.5, 35.8, 39.8),
+                "function": "get_front_frequency",
+                "function_kwargs": {
+                    "window": 30,
+                    "smooth_sigma": 1.0,
+                }
+            }
+        ),
+        "eddy_kinetic_e": DatasetSpec(
+            short_name="eke",
+            source="cmems",
+            location="cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
+            names=(
+                "Eddy Kinetic Energy",
+            ),
+            variables=("ugos", "vgos"),
+            # define hyperparameters for subset and climatological means here
+            options={
+                "clim_period": ("1993-01-01T00:00:00", "2026-01-16T00:00:00"),
+                "function": "get_eke", 
+                "function_kwargs": {
+                    "frequency": "day", 
+                }
+            }
+        ),
+        "sst_high": DatasetSpec(
+            short_name="sst_high",
+            source="ifremer_sst",
+            location="https://tds0.ifremer.fr/thredds/catalog/",
+            names=("Merged High-Resolution SST composite",),
+            variables=None,
+        ),
+        "dist_to_coast": DatasetSpec(
+            short_name="d_coast",
+            source="opendap",
+            location="https://dap.ceda.ac.uk/"
+                        "thredds/dodsC/bodc/gebco/global/gebco_2026/sub_ice_topography_bathymetry/netcdf/GEBCO_2026_sub_ice.nc",
+            names=("Distance to Coast",),
+            variables=("elevation",),
+            options={
+                "function": "get_dist_to_coast",
+            }
+        )
+    }
+    
     def __init__(
         self,
         kinds,
@@ -385,15 +410,15 @@ class OceanData:
         self.kinds = [k.lower() for k in kinds]
 
         if kinds == ["all"]:
-            self.kinds = list(REGISTRY.keys())
+            self.kinds = list(self.REGISTRY.keys())
         else:
             self.kinds = list(kinds)
 
-        unknown = [k for k in self.kinds if k not in REGISTRY]
+        unknown = [k for k in self.kinds if k not in self.REGISTRY]
         if unknown:
-            raise ValueError(f"Unknown kind(s) {unknown}. Available: {sorted(REGISTRY)}")
+            raise ValueError(f"Unknown kind(s) {unknown}. Available: {sorted(self.REGISTRY)}")
 
-        self.specs = {k: REGISTRY[k] for k in self.kinds}
+        self.specs = {k: self.REGISTRY[k] for k in self.kinds}
         self.min_lon, self.max_lon = minimum_longitude, maximum_longitude
         self.min_lat, self.max_lat = minimum_latitude, maximum_latitude
         self.start_dt, self.end_dt = start_dt, end_dt

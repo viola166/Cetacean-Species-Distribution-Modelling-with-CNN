@@ -9,7 +9,7 @@ from data.prepareCSVData import load_csv_data, SPECIES_LIST
 import json
 from pathlib import Path
 
-N_EPOCHS = 10
+N_EPOCHS = 60
 
 # ---------------------------------------------------------------- 2. Architecture
 # class ConvBlock(nn.Module):
