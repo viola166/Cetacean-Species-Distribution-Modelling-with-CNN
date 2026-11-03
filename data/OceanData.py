@@ -75,6 +75,9 @@ def load_cmems(spec, bbox, trange, refresh):
         ds = ds.sel(time=slice(*trange))
     if "depth" in ds.dims:
         ds = ds.isel(depth=0)
+
+    if spec.short_name == "wind":                           # wind data is hourly
+        ds = ds.resample(time="1D").mean(keep_attrs=True)
     
     ds = ds.load() # actually download now, not lazily
     ds = standardize_coords(ds)  # ensure consistent lat/lon names and order
