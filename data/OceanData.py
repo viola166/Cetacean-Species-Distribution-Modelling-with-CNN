@@ -40,6 +40,7 @@ def robust_load(ds, retries=5, wait=10):
             time.sleep(wait * (i + 1))
 
 def load_in_time_chunks(ds, trange, step=30):
+    print("in load in time chunks")
     ds = ds.sel(time=slice(*trange))          # label-based: dates, inclusive on both ends
     n = ds.sizes["time"]
     if n == 0:
@@ -99,11 +100,16 @@ def load_opendap(spec, bbox, trange, refresh):
     ds = xr.open_dataset(
         spec.location,          # lazy, OPeNDAP
         engine="pydap",
-        session=session
+        session=session,
+        timeout=600,
     )
     ds = standardize_coords(ds)  # ensure consistent lat/lon names and order
     ds = standardize_longitude(ds)  # ensure longitudes are in -180..180
     lon0, lon1, lat0, lat1 = bbox
+    if spec.short_name == "fsle":           # for small margin of NaNs that are extracted > retrieve with padding, crop afterwards
+        pad = 0.1
+        lon0, lat0 = lon0 - pad, lat0 - pad
+        lon1, lat1 = lon1 + pad, lat1 + pad
     # match the dataset's longitude convention (0-360 vs -180-180)
     if float(ds.longitude.max()) > 180:
         lon0, lon1 = lon0+360, lon1+360
