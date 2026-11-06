@@ -36,120 +36,91 @@ def fronts_to_mask(xdata_final, ydata_final, field):
 
     return mask
 
+def _pixel_km(field):
+    """Pixel size in km (dy, dx) at the field's mean latitude."""
+    lat = field['latitude'].values
+    lon = field['longitude'].values
+    dy = np.abs(np.mean(np.diff(lat))) * 111.0
+    dx = np.abs(np.mean(np.diff(lon))) * 111.0 * np.cos(np.deg2rad(lat.mean()))
+    return dy, dx
 
-def front_distance_channel(xdata_final, ydata_final, field, normalize='log'):
+
+def front_distance_channel(xdata_final, ydata_final, field):
+    # """
+    # Dense distance-to-nearest-front raster, same shape as field.
+
+    # Parameters
+    # ----------
+    # normalize : {'log', 'minmax', None}
+    #     'log'    -> log1p(distance), then min-max to [0, 1]  (recommended;
+    #                 compresses the long right tail of far-from-front cells)
+    #     'minmax' -> raw distance min-max scaled to [0, 1]
+    #     None     -> raw distance in grid-cell units
+
+    # Returns
+    # -------
+    # np.ndarray (float64), shape = field.shape
+    #     No NaNs. 0 (or near-0) at front pixels, increasing with distance.
+    #     If no fronts were detected in this image, returns an array of NaNs
+    #     of the same shape (there is no meaningful distance field to compute).
+    # """
+    # mask = fronts_to_mask(xdata_final, ydata_final, field)
+
+    # if not mask.any():
+    #     return np.zeros(field.shape, dtype='float64')
+
+    # # distance_transform_edt gives distance to the nearest True pixel from
+    # # every False pixel (0 at True pixels themselves). Pass sampling so
+    # # unequal lat/lon pixel spacing is respected in the distance calc.
+    # lat_vals = field['latitude'].values
+    # lon_vals = field['longitude'].values
+    # dlat = np.abs(np.mean(np.diff(lat_vals)))
+    # dlon = np.abs(np.mean(np.diff(lon_vals)))
+
+    # dist = distance_transform_edt(~mask, sampling=(dlat, dlon))
+
+    # if normalize == 'log':
+    #     dist = np.log1p(dist)
+    #     dist = (dist - dist.min()) / (np.ptp(dist) + 1e-12)
+    # elif normalize == 'minmax':
+    #     dist = (dist - dist.min()) / (np.ptp(dist) + 1e-12)
+    # # else: leave as raw distance
+
+    # return dist
+
     """
-    Dense distance-to-nearest-front raster, same shape as field.
-
-    Parameters
-    ----------
-    normalize : {'log', 'minmax', None}
-        'log'    -> log1p(distance), then min-max to [0, 1]  (recommended;
-                    compresses the long right tail of far-from-front cells)
-        'minmax' -> raw distance min-max scaled to [0, 1]
-        None     -> raw distance in grid-cell units
-
-    Returns
-    -------
-    np.ndarray (float64), shape = field.shape
-        No NaNs. 0 (or near-0) at front pixels, increasing with distance.
-        If no fronts were detected in this image, returns an array of NaNs
-        of the same shape (there is no meaningful distance field to compute).
+    Distance to the nearest front, in km.
+    No fronts detected -> the patch's maximum possible distance everywhere
+    ("as far from a front as possible"). Pair with front_present_channel().
+    Not rescaled: z-scoring happens downstream on the whole training set.
     """
     mask = fronts_to_mask(xdata_final, ydata_final, field)
-
-    if not mask.any():
-        return np.full(field.shape, np.nan, dtype='float64')
-
-    # distance_transform_edt gives distance to the nearest True pixel from
-    # every False pixel (0 at True pixels themselves). Pass sampling so
-    # unequal lat/lon pixel spacing is respected in the distance calc.
-    lat_vals = field['latitude'].values
-    lon_vals = field['longitude'].values
-    dlat = np.abs(np.mean(np.diff(lat_vals)))
-    dlon = np.abs(np.mean(np.diff(lon_vals)))
-
-    dist = distance_transform_edt(~mask, sampling=(dlat, dlon))
-
-    if normalize == 'log':
-        dist = np.log1p(dist)
-        dist = (dist - dist.min()) / (np.ptp(dist) + 1e-12)
-    elif normalize == 'minmax':
-        dist = (dist - dist.min()) / (np.ptp(dist) + 1e-12)
-    # else: leave as raw distance
-
-    return dist
+    dy, dx = _pixel_km(field)
+    ny, nx = field.shape[-2:]
+    if mask.any():
+        return distance_transform_edt(~mask, sampling=(dy, dx))
+    return np.full((ny, nx), np.hypot(ny * dy, nx * dx), dtype='float64')
 
 
 def front_density_channel(xdata_final, ydata_final, field, sigma=2.0):
     """
-    Gaussian-smoothed front density/persistence raster, same shape as field.
-    Higher values near dense clusters of front pixels, decaying smoothly
-    outward. Useful as a complementary channel to distance, especially
-    when compositing fronts across multiple days.
-
-    Parameters
-    ----------
-    sigma : float
-        Standard deviation (in grid cells) of the Gaussian kernel.
-        Larger sigma -> smoother, more spread-out density surface.
-
-    Returns
-    -------
-    np.ndarray (float64), shape = field.shape
-        Values in [0, 1], no NaNs.
+    Gaussian-smoothed front density. Fixed scale: an isolated front pixel peaks
+    at 1.0, overlapping neighbours can exceed it, and no-front images stay at 0.
     """
     mask = fronts_to_mask(xdata_final, ydata_final, field)
-    density = gaussian_filter(mask.astype('float64'), sigma=sigma)
-
-    peak = density.max()
-    if peak > 0:
-        density = density / peak
-
-    return density
+    return gaussian_filter(mask.astype('float64'), sigma=sigma) * (2 * np.pi * sigma**2)
 
 
-def sst_gradient_channel(field, normalize='minmax'):
-    """
-    Dense SST gradient-magnitude raster, computed independently of the
-    front detector. Captures the same underlying thermal structure but
-    preserves gradient strength continuously instead of collapsing to a
-    binary front/no-front decision.
-
-    Parameters
-    ----------
-    field : xarray.DataArray
-        SST field, dims ('lat', 'lon'). May contain NaNs (e.g. land).
-    normalize : {'minmax', None}
-
-    Returns
-    -------
-    np.ndarray (float64), shape = field.shape
-        NaNs preserved where the input field was NaN (or adjacent to NaN,
-        since gradients there are undefined).
-    """
+def sst_gradient_channel(field):
+    """SST gradient magnitude in K/km (NaNs preserved). No per-image scaling."""
     sst = field.values.astype('float64')
-
-    lat_vals = field['latitude'].values
-    lon_vals = field['longitude'].values
-    dlat = np.abs(np.mean(np.diff(lat_vals)))
-    dlon = np.abs(np.mean(np.diff(lon_vals)))
-
-    grad_y, grad_x = np.gradient(sst, dlat, dlon)
-    grad_mag = np.sqrt(grad_x**2 + grad_y**2)
-
-    if normalize == 'minmax':
-        valid = np.isfinite(grad_mag)
-        if valid.any():
-            gmin, gmax = grad_mag[valid].min(), grad_mag[valid].max()
-            grad_mag = (grad_mag - gmin) / (gmax - gmin + 1e-12)
-
-    return grad_mag
-
+    dy, dx = _pixel_km(field)
+    grad_y, grad_x = np.gradient(sst, dy, dx)
+    return np.hypot(grad_x, grad_y)
 
 def build_front_covariate_stack(xdata_final, ydata_final, field,
                                  include_density=True, include_gradient=True,
-                                 distance_normalize='log', density_sigma=2.0):
+                                 density_sigma=2.0):
     """
     Convenience wrapper: build a (C, H, W) stack of front-derived CNN
     covariate channels, ready to concatenate with your other environmental
@@ -163,7 +134,7 @@ def build_front_covariate_stack(xdata_final, ydata_final, field,
     """
     channels = {
         'distance': front_distance_channel(
-            xdata_final, ydata_final, field, normalize=distance_normalize
+            xdata_final, ydata_final, field
         )
     }
 
