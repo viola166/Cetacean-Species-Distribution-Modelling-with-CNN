@@ -221,6 +221,7 @@ def load_any(spec, bbox, trange, refresh):
         kwargs["user_trange"] = user_trange
         kwargs["user_bbox"] = user_bbox
         kwargs["spec"] = spec
+        kwargs["refresh"] = refresh
         if trange != user_trange:
             kwargs["full_trange"] = trange
         if bbox != user_bbox:
