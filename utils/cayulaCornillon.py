@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Agg")
 from math import floor, ceil
 
 
@@ -166,6 +168,7 @@ def getFrontInWindow(w, head, minTheta, minPopProp, minPopMeanDiff, minSinglePop
         #breakpoint()
         try:
             M = c.allsegs[:]          #list of arrays for contour c. Each array corresponds to a line that may or may not be drawn. This list can have any number of arrays
+            plt.close('all')          # SLIGHT CHANGE: close figueres to not fled memory
         except:
             M = []
             
@@ -264,9 +267,6 @@ def CCA_SIED(data_xarray):
 
     nWinRows = floor(n_rows/winW16)   #times a window can slide over the rows 
     nWinCols = floor(n_cols/winW16)   #times a window can slide over the columns
-
-    print(nWinRows)
-
 
     for wRow in range(1, nWinRows-1):    
         #start and stop indices and coords of current window
