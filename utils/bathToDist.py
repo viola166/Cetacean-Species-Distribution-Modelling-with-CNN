@@ -16,13 +16,13 @@ def _to_xyz(lon, lat):
     ])
 
 
-def get_dist_to_coast(ds, user_trange, user_bbox, spec):
+def get_dist_to_coast(ds, user_trange, user_bbox, spec, refresh=False):
     """Distance (km) from every grid cell to the nearest land/ocean transition.
 
     Static field: user_trange is ignored.
     """
     path = subset_path(spec=spec, bbox=user_bbox, trange=user_trange, name="dist")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
 

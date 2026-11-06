@@ -26,20 +26,20 @@ def climatology(data, path, frequency="day"):
 
 
 # user_trange must at least be 365days/1 year for this to work
-def get_sst_anomaly(data, spec, user_trange, full_trange, user_bbox, frequency="day"):
+def get_sst_anomaly(data, spec, user_trange, full_trange, user_bbox, frequency="day", refresh=False):
     """Anomaly of `data` relative to its own climatology, returned for the user's range/bbox.
 
     `data` must span several years (the baseline); `user_trange` can be any sub-range.
     """
     path = subset_path(spec=spec, bbox=user_bbox, trange=user_trange, wider_trange=full_trange, name="anomaly")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
     data_variables = list(spec.variables)
     sst_data = data[data_variables[0]]
 
     clim_path = subset_path(spec=spec, bbox=user_bbox, trange=full_trange, name="clim")
-    if clim_path.exists():
+    if clim_path.exists() and refresh is False:
         clim = xr.load_dataset(clim_path)
     else:
         clim = climatology(sst_data, clim_path, frequency)       # baseline from ALL of `data`

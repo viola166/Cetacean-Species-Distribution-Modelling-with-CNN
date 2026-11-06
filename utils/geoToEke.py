@@ -30,7 +30,7 @@ def anomaly(data, clim, frequency="day"):
     return out.drop_vars(_GROUPS[frequency].split(".")[1], errors="ignore")
 
 
-def get_eke(data, spec, user_trange, full_trange, user_bbox, frequency="day"):
+def get_eke(data, spec, user_trange, full_trange, user_bbox, frequency="day", refresh = False):
     """Eddy kinetic energy from velocity anomalies relative to the climatology.
 
     `data`: Dataset covering the full baseline period (fetched by load_any).
@@ -38,7 +38,7 @@ def get_eke(data, spec, user_trange, full_trange, user_bbox, frequency="day"):
     anomalies are restricted to `user_trange` and `user_bbox`.
     """
     path = subset_path(spec=spec, bbox=user_bbox, trange=user_trange, wider_trange=full_trange, name="eke")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
     data_variables = list(spec.variables)
@@ -53,7 +53,7 @@ def get_eke(data, spec, user_trange, full_trange, user_bbox, frequency="day"):
 
     # 2. baseline from the FULL time range of the (small) box
     clim_path = subset_path(spec=spec, bbox=user_bbox, trange=full_trange, name="clim")
-    if clim_path.exists():
+    if clim_path.exists() and refresh is False:
         clim = xr.load_dataset(clim_path)
     else:
         clim = climatology(geo_data, clim_path, frequency)

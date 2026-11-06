@@ -149,10 +149,10 @@ def build_front_covariate_stack(xdata_final, ydata_final, field,
     return channels
 
 
-def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange):
+def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange, refresh=False):
     # final-product cache: stored in the same form it is returned (Dataset)
     path = subset_path(spec=spec, bbox=user_bbox, trange=user_trange, name="frontCh")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
     data_variables = list(spec.variables)
@@ -178,7 +178,7 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange):
         cca_path = subset_path(spec=spec, bbox=wider_bbox, trange=(day, day), name="cca")
         cca_path = cca_path.with_suffix(".npz")
 
-        if cca_path.exists():
+        if cca_path.exists() and refresh is False:
             with np.load(cca_path) as f:
                 front_xdata, front_ydata = f["x"], f["y"]
         else:
@@ -213,10 +213,10 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange):
     return out
 
 
-def get_front_frequency(data, spec, user_bbox, wider_bbox, user_trange, full_trange, window=30, smooth_sigma=1.0):
+def get_front_frequency(data, spec, user_bbox, wider_bbox, user_trange, full_trange, window=30, smooth_sigma=1.0, refresh=False):
     # final-product cache: stored in the same form it is returned (Dataset)
     path = subset_path(spec=spec, bbox=user_bbox, trange=user_trange, name="frontFreq")
-    if path.exists():
+    if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
     t0, t1 = (pd.Timestamp(t) for t in full_trange)
@@ -242,7 +242,7 @@ def get_front_frequency(data, spec, user_bbox, wider_bbox, user_trange, full_tra
         cca_path = subset_path(spec=spec, bbox=wider_bbox, trange=(day, day), name="cca")
         cca_path = cca_path.with_suffix(".npz")
 
-        if cca_path.exists():
+        if cca_path.exists() and refresh is False:
             with np.load(cca_path) as f:
                 front_xdata, front_ydata = f["x"], f["y"]
         else:
