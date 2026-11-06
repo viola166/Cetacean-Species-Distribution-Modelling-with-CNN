@@ -21,6 +21,15 @@ TARGET_GRID = xr.Dataset(
 NUMBER_OF_PIXELS_PER_PATCH = 13  # Number of pixels per patch in each dimension (should be odd to have a center pixel)
 SKEW_THRESHOLD = 1.0
 
+def make_target_grid(bbox, res=0.00833333333):
+    """bbox = (lon_min, lon_max, lat_min, lat_max); res in degrees."""
+    lon_min, lon_max, lat_min, lat_max = bbox
+    n_lon = int(round((lon_max - lon_min) / res)) + 1
+    n_lat = int(round((lat_max - lat_min) / res)) + 1
+    return xr.Dataset(coords={
+        "latitude":  np.linspace(lat_min, lat_max, n_lat),
+        "longitude": np.linspace(lon_min, lon_max, n_lon),
+    })
 
 def to_target_grid(ds, target=TARGET_GRID):
     return ds.interp_like(target, method="linear")   ### CONSIDER WHICH METHOD TO USE (LINEAR, NEAREST, ETC.) BASED ON DATA CHARACTERISTICS

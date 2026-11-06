@@ -12,7 +12,7 @@ from utils.caching import subset_path
 from utils.swathData import regrid_to_common_grid, get_catalog_url, get_data_url
 from utils.standardize import standardize_coords, standardize_longitude
 from utils.bathToDist import get_dist_to_coast
-from data.prepareGridData import to_target_grid
+from data.prepareGridData import to_target_grid, make_target_grid
 import pandas as pd
 import time
 from datetime import date
@@ -84,7 +84,8 @@ def load_cmems(spec, bbox, trange, refresh):
     ds = standardize_coords(ds)  # ensure consistent lat/lon names and order
     ds = standardize_longitude(ds)  # ensure longitudes are in -180..180
 
-    ds = to_target_grid(ds)
+    target_grid = make_target_grid(bbox)
+    ds = to_target_grid(ds, target=target_grid)
     ds.to_netcdf(path)
     return ds
 
@@ -131,7 +132,9 @@ def load_opendap(spec, bbox, trange, refresh):
         ds = ds.isel(depth=0)
 
     ds = ds.load()
-    ds = to_target_grid(ds)
+
+    target_grid = make_target_grid(bbox)
+    ds = to_target_grid(ds, target=target_grid)
 
     subset = ds[list(spec.variables)]
     subset.to_netcdf(path)
