@@ -171,6 +171,7 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange, refresh=F
     per_step = []
     # loop over the time dimension > create one 2D datagrid per time index
     for i in range(data.sizes["time"]):
+        print(f"getting {i} of {data.sizes["time"]}")
         sst_field_big = data[data_variables[0]].isel(time=i)
         day = pd.Timestamp(sst_field_big["time"].values).strftime("%Y-%m-%d")
 
