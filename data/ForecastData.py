@@ -15,7 +15,7 @@ class ForecastData(OceanData):
         "salinity": DatasetSpec(
             short_name="salinity",
             source="cmems",
-            location="cmems_mod_glo_phy_anfc_0.083deg_P1D-m",  # verify with cm.describe()
+            location="cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m",  # verify with cm.describe()
             names=("Sea Water Salinity",),
             variables=("so",),
         ),
