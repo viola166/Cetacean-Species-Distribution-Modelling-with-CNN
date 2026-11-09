@@ -55,6 +55,7 @@ class SpeciesCNN(nn.Module):
         )
         self.in_channels = in_channels
         self.dropout = nn.Dropout(dropout)
+        self.dropout_p = dropout                 # the float, for saving
         self.fc = nn.Linear(512, n_species)
         self.preproc = None   # set before train_sdm: dict with transforms, stats, etc.
 
@@ -169,7 +170,7 @@ class SpeciesCNN(nn.Module):
         meta = {
             "species_list": list(SPECIES_LIST),
             "in_channels": self.in_channels,
-            "dropout": self.dropout,
+            "dropout": self.dropout_p,
             "pi": pi.cpu().tolist(),
             "best_epoch": self.best_epoch,
             "best_val_mean_auc": self.best_auc,
