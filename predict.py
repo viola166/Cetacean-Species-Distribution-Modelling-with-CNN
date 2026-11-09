@@ -16,7 +16,8 @@ pre = meta["preprocessing"]
 transforms = pre["transforms"]
 norm_stats = {v: tuple(ms) for v, ms in pre["stats"].items()}   # JSON gives lists
 
-grid_data_accessor = ForecastData(kinds=["all"], refresh=True)
+kinds = ["ph", "salinity", "sst_low", "geo_velocity", "chlorophyll", "oxygen", "wind", "bathymetry", "fsle", "sst_anomaly", "thermal_fronts", "thermal_front_freq", "eddy_kinetic_e", "dist_to_coast"]
+grid_data_accessor = ForecastData(kinds=kinds, refresh=False)
 channel_dss = grid_data_accessor.fetch_data()    # {kind: Dataset}
 
 # norm_dss, mask_dss = [], []

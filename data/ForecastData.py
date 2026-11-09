@@ -67,14 +67,14 @@ class ForecastData(OceanData):
             names=("Bathymetry",),
             variables=("elevation",),
         ),
-        # "fsle": DatasetSpec(
-        #     short_name="fsle",
-        #     source="opendap",
-        #     location="http://tds-odatis.aviso.altimetry.fr/"
-        #             "thredds/dodsC/dataset-duacs-dt-global-allsat-madt-fsle",
-        #     names=("FSLE",),
-        #     variables=("fsle_max",),
-        # ),
+        "fsle": DatasetSpec(
+            short_name="fsle",
+            source="opendap",
+            location="http://tds-odatis.aviso.altimetry.fr/"
+                    "thredds/dodsC/dataset-duacs-dt-global-allsat-madt-fsle",
+            names=("FSLE",),
+            variables=("fsle_max",),
+        ),
         "sst_anomaly": DatasetSpec(
             short_name="sst_a",
             source="cmems",
@@ -154,7 +154,7 @@ class ForecastData(OceanData):
         )
     }
 
-    def __init__(self, kinds, start_dt=date.today(), end_dt=date.today(), **kwargs):
+    def __init__(self, kinds, start_dt=date.today().isoformat(), end_dt=date.today().isoformat(), **kwargs):
         super().__init__(kinds, start_dt=start_dt, end_dt=end_dt, **kwargs)
         # forecast-specific setup here, after the base class has built self.specs
 
