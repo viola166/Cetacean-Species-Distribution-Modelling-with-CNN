@@ -11,7 +11,7 @@ import pandas as pd
 # for testing purposes, only use fraction of the dataset
 # grid_data_accessor = OceanData(kinds=["ph", "salinity", "sst_low", "chlorophyll", "geo_velocity", "oxygen", "wind", "bathymetry", "dist_to_coast", "fsle", "sst_anomaly", "eddy_kinetic_e", "thermal_fronts", "thermal_front_freq"], refresh = False)
 kinds = ["ph", "salinity", "sst_low", "geo_velocity", "chlorophyll", "oxygen", "wind", "bathymetry", "fsle", "sst_anomaly", "thermal_fronts", "thermal_front_freq", "eddy_kinetic_e", "dist_to_coast"]
-grid_data_accessor = OceanData(kinds=kinds, end_dt="2008-05-10T00:00:00", refresh = True)
+grid_data_accessor = OceanData(kinds=kinds)
 channel_dss = grid_data_accessor.fetch_data()
 for kind, ds in channel_dss.items():
     print(kind)
@@ -25,7 +25,7 @@ in_channels = get_num_in_channels(data)
 
 model = SpeciesCNN(in_channels=in_channels)
 
-run_dir = Path("runs/nnpu_fold_0")
+run_dir = Path("runs/nnpu_fold_7")
 run_dir.mkdir(parents=True, exist_ok=True)
 
 model.preproc = {
