@@ -87,6 +87,7 @@ class ForecastData(OceanData):
                 "function": "get_sst_anomaly", 
                 "function_kwargs": {
                     "frequency": "day",
+                    "train_spec": OceanData.REGISTRY["sst_anomaly"],
                 }
             }
         ),
@@ -130,7 +131,8 @@ class ForecastData(OceanData):
                 "clim_period": ("1993-01-01T00:00:00", "2026-01-16T00:00:00"),
                 "function": "get_eke", 
                 "function_kwargs": {
-                    "frequency": "day", 
+                    "frequency": "day",
+                    "train_spec": OceanData.REGISTRY["eddy_kinetic_e"], 
                 }
             }
         ),
