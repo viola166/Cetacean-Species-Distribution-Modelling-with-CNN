@@ -30,12 +30,13 @@ run_dir.mkdir(parents=True, exist_ok=True)
 
 model.preproc = {
     "transforms": transforms,                                   # {var: kind} from remove_skewness
-    "stats": {v: [m, s] for v, (m, s) in n_stats.items()},      # {var: [mean, std]} from normalize_channel
-    "eps": skew_eps,
+    "stats": {name: {v: [float(m), float(s)] for v, (m, s) in d.items()}
+                for name, d in n_stats.items()},
     "patch_size": NUMBER_OF_PIXELS_PER_PATCH,
     "chl_lead_weeks": 12,
-    "channel_order": kinds,      # variable names in the exact order make_patches stacks them
-    "use_mask": True,
+    "channel_order": list(n_stats.keys()),      # variable names in the exact order make_patches stacks them
+    "use_mask": False,
+    "skew_eps": skew_eps,
 }
 
 model.train_sdm(loaders, pi, run_dir=run_dir)
