@@ -8,7 +8,7 @@ class ForecastData(OceanData):
         "ph": DatasetSpec(
             short_name="ph",
             source="cmems",
-            location="cmems_mod_glo_bgc_car_anfc_0.25deg_P1D-m",
+            location="cmems_mod_glo_bgc-car_anfc_0.25deg_P1D-m",
             names=("Sea Water pH Reported on Total Scale",),
             variables=("ph",),
         ),
@@ -48,7 +48,7 @@ class ForecastData(OceanData):
         "oxygen": DatasetSpec(
             short_name="o2",
             source="cmems",
-            location="cmems_mod_glo_bgc-bio_anf_0.25deg_P1D-m",
+            location="cmems_mod_glo_bgc-bio_anfc_0.25deg_P1D-m",
             names=("Mole Concentration of Dissolved Molecular Oxygen in Sea Water",),
             variables=("o2",),
         ),
