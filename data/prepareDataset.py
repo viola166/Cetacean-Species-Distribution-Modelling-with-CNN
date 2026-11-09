@@ -92,7 +92,7 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
     return data, loaders, pi, transforms, norm_stats
 
 
-def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl_mask_channels=False):
+def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl_mask_channels=False, skew_eps=1e-3):
     # get CSV data
     if csv_data is None:
         csv_data = load_csv_data()
@@ -110,7 +110,7 @@ def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl
     print("got csv, split, and channel_dss")
 
     # preprocess data in bring in correct format
-    data, loaders, pi = preprocess_and_build(csv_data, split_csv_data_keys[0], channel_dss, incl_mask_channels)     # for now only training the first split
+    data, loaders, pi = preprocess_and_build(csv_data, split_csv_data_keys[0], channel_dss, incl_mask_channels, skew_eps=skew_eps)     # for now only training the first split
 
     return data, loaders, pi
 
