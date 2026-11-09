@@ -10,7 +10,8 @@ import pandas as pd
 
 # for testing purposes, only use fraction of the dataset
 # grid_data_accessor = OceanData(kinds=["ph", "salinity", "sst_low", "chlorophyll", "geo_velocity", "oxygen", "wind", "bathymetry", "dist_to_coast", "fsle", "sst_anomaly", "eddy_kinetic_e", "thermal_fronts", "thermal_front_freq"], refresh = False)
-grid_data_accessor = OceanData(kinds=["sst_high"], end_dt="2008-05-10T00:00:00", refresh = True)
+kinds = ["ph", "salinity", "sst_low", "geo_velocity", "chlorophyll", "oxygen", "wind", "bathymetry", "fsle", "sst_anomaly", "thermal_fronts", "thermal_front_freq", "eddy_kinetic_e", "dist_to_coast"]
+grid_data_accessor = OceanData(kinds=kinds, end_dt="2008-05-10T00:00:00", refresh = True)
 channel_dss = grid_data_accessor.fetch_data()
 for kind, ds in channel_dss.items():
     print(kind)
@@ -29,11 +30,11 @@ run_dir.mkdir(parents=True, exist_ok=True)
 
 model.preproc = {
     "transforms": transforms,                                   # {var: kind} from remove_skewness
-    "stats": {v: [m, s] for v, (m, s) in n_stats.items()},    # {var: [mean, std]} from normalize_channel
+    "stats": {v: [m, s] for v, (m, s) in n_stats.items()},      # {var: [mean, std]} from normalize_channel
     "eps": skew_eps,
     "patch_size": NUMBER_OF_PIXELS_PER_PATCH,
     "chl_lead_weeks": 12,
-    "channel_order": [...],      # variable names in the exact order make_patches stacks them
+    "channel_order": kinds,      # variable names in the exact order make_patches stacks them
     "use_mask": True,
 }
 
