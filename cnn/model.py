@@ -53,8 +53,10 @@ class SpeciesCNN(nn.Module):
             ConvBlock(128, 256, strided_dilated=False, pool=False),
             ConvBlock(256, 512, strided_dilated=False, final=True),  # last block: plain conv
         )
+        self.in_channels = in_channels
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(512, n_species)
+        self.preproc = None   # set before train_sdm: dict with transforms, stats, etc.
 
     def forward_logits(self, x):
         z = self.features(x).flatten(1)        # B x 512
@@ -166,14 +168,29 @@ class SpeciesCNN(nn.Module):
 
         meta = {
             "species_list": list(SPECIES_LIST),
+            "in_channels": self.in_channels,
+            "dropout": self.dropout,
             "pi": pi.cpu().tolist(),
             "best_epoch": self.best_epoch,
             "best_val_mean_auc": self.best_auc,
             "n_epochs": len(self.history),
+            "preprocessing": self.preproc,
             **(extra or {}),      # e.g. fold, in_channels, use_mask, max_ratio, batch_size, seed
         }
         with open(run_dir / "meta.json", "w") as f:
             json.dump(meta, f, indent=2)
+
+    @classmethod
+    def load_run(cls, run_dir, device="cpu"):
+        run_dir = Path(run_dir)
+        with open(run_dir / "meta.json") as f:
+            meta = json.load(f)
+        model = cls(in_channels=meta["in_channels"],
+            n_species=len(meta["species_list"]),
+            dropout=meta.get("dropout", 0.4))
+        model.load_state_dict(torch.load(run_dir / "model_best.pt", map_location=device))
+        model.preproc = meta["preprocessing"]
+        return model.to(device).eval(), meta
 
     @torch.no_grad()
     def evaluate_sdm(self, loader, device="cuda"):
@@ -239,43 +256,3 @@ def nnpu_loss(logits, y, pi, w=None, gamma=1.0, beta=0.0):
         -gamma * neg_risk,
     )
     return risk.sum()               # or risk.mean()
-
-
-# # ---------------------------------------------------------------- 4. Training
-
-
-# def train(model, train_ds, inv_freq, device="cuda", epochs=100, batch_size=32):
-#     model.to(device)
-#     inv_freq = inv_freq.to(device)
-#     loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-#                         num_workers=4, drop_last=False)
-#     opt = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
-#     sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[50], gamma=0.1)
-
-#     for epoch in range(epochs):
-#         model.train()
-#         running = 0.0
-#         for x, y, m in loader:
-#             x, y, m = x.to(device), y.to(device), m.to(device)
-#             opt.zero_grad()
-#             loss = masked_weighted_bce(model.forward_logits(x), y, m, inv_freq)
-#             loss.backward()
-#             opt.step()
-#             running += loss.item() * x.size(0)
-#         sched.step()
-#         print(f"epoch {epoch+1:3d}/{epochs}  loss {running/len(train_ds):.4f}")
-#     return model
-
-
-# # ---------------------------------------------------------------- Sanity check
-# if __name__ == "__main__":
-#     K = 500
-#     model = SpeciesCNN(in_channels=17, n_species=K)
-#     print("params:", sum(p.numel() for p in model.parameters() if p.requires_grad))
-
-#     x = torch.randn(4, 17, 64, 64)
-#     h = x
-#     for i, blk in enumerate(model.features, 1):
-#         h = blk(h)
-#         print(f"block {i}: {tuple(h.shape)}")
-#     print("output:", tuple(model(x).shape))

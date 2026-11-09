@@ -178,7 +178,6 @@ def load_ifremer_sst(spec, bbox, trange, refresh):
                 continue
             dss_one_day = [standardize_coords(ds) for ds in dss_one_day]
             dss_one_day = [standardize_longitude(ds) for ds in dss_one_day]
-            day_ds = day_ds.load()
             day_ds = regrid_to_common_grid(dss_one_day, bbox, spec)
 
         except Exception as e:  # missing catalog, 404, network error, ...
@@ -192,6 +191,9 @@ def load_ifremer_sst(spec, bbox, trange, refresh):
         day_ds = day_ds.sortby("latitude").sortby("longitude")
         if spec.variables is not None:
             day_ds = day_ds[list(spec.variables)]
+
+        target_grid = make_target_grid(bbox)
+        day_ds = to_target_grid(day_ds, target=target_grid)
 
         day_ds.to_netcdf(path)
         daily.append(day_ds)
@@ -207,8 +209,8 @@ def load_any(spec, bbox, trange, refresh):
     # (keep the user's requested ranges for cropping afterwards)
     user_bbox, user_trange = bbox, trange
 
-    # add time window for thermal front frequency
-    time_offset = spec.options.get("window")
+    # add time window for thermal front frequency + chlorophyll time offset
+    time_offset = spec.options.get("time_offset")
 
     # override bbox and trange if REGISTRY options are broader
     bbox = widen_bbox(bbox, spec.options.get("wide_bbox"))
@@ -296,6 +298,9 @@ class OceanData:
             location="cmems_obs-oc_atl_bgc-plankton_my_l4-gapfree-multi-1km_P1D",
             names=("Mass Concentration of Chlorophyll-a in Sea Water",),
             variables=("CHL",),
+            options={
+                "time_offset": 84,          # 12 weeks prior for primary production
+            },
         ),
         "oxygen": DatasetSpec(
             short_name="o2",
@@ -354,13 +359,13 @@ class OceanData:
             }
         ),
         "thermal_front_freq": DatasetSpec(
-            short_name="front_freqency",
+            short_name="thermal_fronts",                    # same name as "thermal_fronts" on purpose > same caching folder, ensures cca files are not computed twice
             source="cmems",
             location="METOFFICE-GLO-SST-L4-REP-OBS-SST",
             names=("Frequency of Thermal Fronts",),
             variables=("analysed_sst",),
             options={
-                "window": 30,
+                "time_offset": 30,                          # 30 days prior for average freq within a 30 day window
                 "wide_bbox": (-27.5, -23.5, 35.8, 39.8),
                 "function": "get_front_frequency",
                 "function_kwargs": {
@@ -501,11 +506,3 @@ class OceanData:
             ax.set_title(title)
 
         plt.show()
-   
-
-# data_instance = OceanData(kinds=["all"], start_dt="2010-06-01T00:00:00", end_dt="2010-06-02T00:00:00")
-# data = data_instance.fetch_data()
-# for dataset in data.values():
-#     print(dataset)
-
-# data_instance.get_feature_map(kind="thermal_fronts", time_index=0)

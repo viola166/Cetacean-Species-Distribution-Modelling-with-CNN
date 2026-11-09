@@ -8,7 +8,7 @@ from data.OceanData import OceanData
 from pathlib import Path
 
 
-def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False, time_res="D", batch_size=64):
+def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False, time_res="D", batch_size=64, skew_eps=1e-3):
     """
     Build everything needed to train and evaluate on ONE cross-validation fold:
     preprocessed channels, labelled datasets (patches + labels + weights) and DataLoaders.
@@ -44,15 +44,17 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
     """
 
     # ---- 1. Preprocess each channel dataset ----
-    norm_dss, mask_dss = {}, {}
+    norm_dss, mask_dss, transforms, norm_stats = {}, {}, {}, {}
     for name, ds in channel_dss.items():
         print("in preprocessing loop")
-        ds_t, _ = remove_skewness(ds, csv_data, split, verbose=False)        # decided on train records
+        ds_t, transform = remove_skewness(ds, csv_data, split, verbose=False, eps=skew_eps)        # decided on train records
         print("removed skewness")
-        n, m, _ = normalize_channel(ds_t, csv_data, split, verbose=False)    # fitted on train records
+        n, m, n_stats = normalize_channel(ds_t, csv_data, split, verbose=False)    # fitted on train records
         print("normalized channel")
         norm_dss[name] = n
         mask_dss[name] = m
+        transforms[name] = transform
+        norm_stats[name] = n_stats
 
     if not incl_mask_channels:
         mask_dss_list = None
@@ -87,7 +89,7 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
 
     print("loaders created")
 
-    return data, loaders, pi
+    return data, loaders, pi, transforms, norm_stats
 
 
 def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl_mask_channels=False):
@@ -116,4 +118,3 @@ def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl
 def get_num_in_channels(occurrence_ds):
     x0, _, _ = occurrence_ds["train"][0]   
     return x0.shape[0]
-     

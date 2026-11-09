@@ -282,21 +282,6 @@ def normalize_channel(channel_ds, csv_data, split, size=NUMBER_OF_PIXELS_PER_PAT
     return norm_ds, mask_ds, stats
 
 
-# def get_skewness(channel_ds, csv_data, fold, size=NUMBER_OF_PIXELS_PER_PATCH):
-#     """Skewness per variable over the training patch pixels of one fold."""
-#     train = {k: csv_data[k] for k in fold["train"]}
-#     pixels = get_patch_pixels(train, channel_ds, size=size)
-#     return {v: float(skew(x)) for v, x in pixels.items()}
-
-# # handle skewness
-# def log_transform(channel_ds, eps=1e-3):
-#     """log10 transform for strictly positive, right-skewed variables (e.g. chlorophyll)."""
-#     out = channel_ds.copy()
-#     for v in out.data_vars:
-#         out[v] = np.log10(out[v].clip(min=eps))   # clip guards against zeros/negatives
-#     return out
-
-
 def _apply_transform(x, kind, eps=1e-3):
     """Pointwise transform; works on numpy arrays and xarray DataArrays."""
     if kind == "none":
@@ -406,7 +391,7 @@ def make_patches(norm_dss, mask_dss, lat, lon, time, size=NUMBER_OF_PIXELS_PER_P
 
     chans = []
     for k, nds in enumerate(norm_dss):
-        t = lead_time(nds, time, list(nds.data_vars))
+        t = lag_time(nds, time, list(nds.data_vars))
         p = extract_patch(nds, lat, lon, t, size).fillna(0.0)   # off-grid -> 0 (= training mean)
         chans += [p[v].values for v in nds.data_vars]
 
@@ -418,13 +403,33 @@ def make_patches(norm_dss, mask_dss, lat, lon, time, size=NUMBER_OF_PIXELS_PER_P
     return np.stack(chans).astype(np.float32)                     # (2C, size, size)
 
 
-CHL_LEAD = pd.Timedelta(weeks=12)
+# CHL_LEAD = pd.Timedelta(weeks=12)
 
-def lead_time(ds, time, var_names):
-    """Return time + 12 weeks for CHL if that falls inside ds's time range, else the original time."""
+# def lead_time(ds, time, var_names):
+#     """Return time + 12 weeks for CHL if that falls inside ds's time range, else the original time."""
+#     if "CHL" not in var_names:
+#         return time
+#     t_new = pd.Timestamp(time) + CHL_LEAD
+#     t_min, t_max = pd.Timestamp(ds.time.values.min()), pd.Timestamp(ds.time.values.max())
+#     return t_new if t_min <= t_new <= t_max else time
+
+
+CHL_LAG = pd.Timedelta(weeks=12)
+
+def lag_time(ds, time, var_names):
+    """Return time - 12 weeks for CHL if that falls inside ds's time range, else raise."""
     if "CHL" not in var_names:
         return time
-    t_new = pd.Timestamp(time) + CHL_LEAD
+    t_new = pd.Timestamp(time) - CHL_LAG
     t_min, t_max = pd.Timestamp(ds.time.values.min()), pd.Timestamp(ds.time.values.max())
-    return t_new if t_min <= t_new <= t_max else time
+    if not (t_min <= t_new <= t_max):
+        raise ValueError(f"CHL time {t_new} outside dataset range [{t_min}, {t_max}]")
+    return t_new
 
+
+def preprocess_channel(channel_ds, transforms, stats, eps=1e-3):
+    """Label-free: apply stored skew transforms, then z-score with stored stats."""
+    ds = channel_ds.copy()
+    for v in ds.data_vars:
+        ds[v] = _apply_transform(channel_ds[v], transforms[v], eps)
+    return normalize_channel_variables(ds, stats)    # -> norm_ds, mask_ds
