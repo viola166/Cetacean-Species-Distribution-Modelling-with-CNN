@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import xarray as xr
 import requests
 from utils.sstToAnomaly import get_sst_anomaly
-from utils.dataCropper import widen_bbox, widen_trange
+from utils.dataCropper import widen_bbox, widen_trange, nearest_date
 from utils.sstToFront import get_front_channels, get_front_frequency
 from utils.geoToEke import get_eke
 from utils.caching import subset_path
@@ -14,7 +14,6 @@ from utils.standardize import standardize_coords, standardize_longitude
 from utils.bathToDist import get_dist_to_coast
 from data.prepareGridData import to_target_grid, make_target_grid
 import pandas as pd
-import time
 from datetime import date
 
 @dataclass(frozen=True)
@@ -29,28 +28,28 @@ class DatasetSpec:
 
 
 # ---------- loaders: (spec, bbox, time_range) -> xr.Dataset ----------
-def robust_load(ds, retries=5, wait=10):
-    for i in range(retries):
-        try:
-            return ds.load()
-        except Exception as e:  # requests.ConnectionError / TimeoutError
-            if i == retries - 1:
-                raise
-            print(f"Attempt {i+1} failed ({e.__class__.__name__}), retrying in {wait*(i+1)}s")
-            time.sleep(wait * (i + 1))
+# def robust_load(ds, retries=5, wait=10):
+#     for i in range(retries):
+#         try:
+#             return ds.load()
+#         except Exception as e:  # requests.ConnectionError / TimeoutError
+#             if i == retries - 1:
+#                 raise
+#             print(f"Attempt {i+1} failed ({e.__class__.__name__}), retrying in {wait*(i+1)}s")
+#             time.sleep(wait * (i + 1))
 
-def load_in_time_chunks(ds, trange, step=30):
-    print("in load in time chunks")
-    ds = ds.sel(time=slice(*trange))          # label-based: dates, inclusive on both ends
-    n = ds.sizes["time"]
-    if n == 0:
-        raise ValueError(f"No data in time range {trange}")
+# def load_in_time_chunks(ds, trange, step=30):
+#     print("in load in time chunks")
+#     ds = ds.sel(time=slice(*trange))          # label-based: dates, inclusive on both ends
+#     n = ds.sizes["time"]
+#     if n == 0:
+#         raise ValueError(f"No data in time range {trange}")
 
-    parts = []
-    for i in range(0, n, step):               # integer positions from here on
-        print(f"Loading time steps {i}-{min(i + step, n)} of {n}")
-        parts.append(robust_load(ds.isel(time=slice(i, i + step))))
-    return xr.concat(parts, dim="time")
+#     parts = []
+#     for i in range(0, n, step):               # integer positions from here on
+#         print(f"Loading time steps {i}-{min(i + step, n)} of {n}")
+#         parts.append(robust_load(ds.isel(time=slice(i, i + step))))
+#     return xr.concat(parts, dim="time")
 
 
 def load_cmems(spec, bbox, trange, refresh):
@@ -68,12 +67,9 @@ def load_cmems(spec, bbox, trange, refresh):
         minimum_latitude=lat0, maximum_latitude=lat1,
         # start_datetime=trange[0], end_datetime=trange[1],
     )
-    start, end = (pd.Timestamp(t).normalize() for t in trange)
-    today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
-    if start == end and start >= today:                                 # forecast request
-        ds = ds.sel(time=[pd.Timestamp(trange[0])], method="nearest")
-    else:
-        ds = ds.sel(time=slice(*trange))
+    if "time" in ds.dims:
+        ds = nearest_date(ds, trange)
+
     if "depth" in ds.dims:
         ds = ds.isel(depth=0)
 
@@ -121,13 +117,17 @@ def load_opendap(spec, bbox, trange, refresh):
         longitude=slice(lon0, lon1), 
         latitude=slice(lat0, lat1)
     )
-    start, end = (pd.Timestamp(t).normalize() for t in trange)
-    today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
-    if "time" in ds.dims:                           # bathymetry has no time axis
-        if start == end and start >= today:         # forecast request
-            ds = ds.sel(time=[pd.Timestamp(trange[0])], method="nearest") # load lazily for one day time slice
-        else:
-            ds = load_in_time_chunks(ds=ds, trange=trange)                # load in chunks for time periods
+    if "time" in ds.dims:
+        ds = nearest_date(ds, trange, in_chunks=True)
+    # start, end = (pd.Timestamp(t).normalize() for t in trange)
+    # today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
+    # if "time" in ds.dims:                           # bathymetry has no time axis
+    #     if start == end and start >= today:         # forecast request
+    #         ds = ds.sel(time=[pd.Timestamp(trange[0])], method="nearest") # load lazily for one day time slice
+    #         gap = abs(pd.Timestamp(ds.time.values[0]) - pd.Timestamp(start))
+    #         print(f"Nearest step is {gap} from {start}")
+    #     else:
+    #         ds = load_in_time_chunks(ds=ds, trange=trange)                # load in chunks for time periods
     if "depth" in ds.dims:
         ds = ds.isel(depth=0)
 

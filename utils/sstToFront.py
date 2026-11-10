@@ -4,6 +4,7 @@ import xarray as xr
 from utils.cayulaCornillon import CCA_SIED
 from utils.caching import subset_path
 from utils.dateConverter import date_to_index
+from utils.dataCropper import nearest_date
 from data.prepareGridData import to_target_grid
 import pandas as pd
 
@@ -161,10 +162,11 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange, refresh=F
     # but keep the wider bbox: CCA needs the margin
     w_min_lon, w_max_lon, w_min_lat, w_max_lat = wider_bbox
     data = data.sel(
-        time=slice(*user_trange),
         latitude=slice(w_min_lat, w_max_lat),      # redundant if data is already the wider box
         longitude=slice(w_min_lon, w_max_lon),
     )
+    data = nearest_date(data, user_trange)
+
     if data.sizes["time"] == 0:
         raise ValueError(f"No data inside {user_trange}")
 

@@ -41,9 +41,13 @@ class ForecastData(OceanData):
         "chlorophyll": DatasetSpec(
             short_name="chl",
             source="cmems",
-            location="cmems_obs-oc_atl_bgc-plankton_nrt_l4-gapfree-multi-1km_P1D",
+            location="cmems_obs-oc_atl_bgc-plankton_my_l4-gapfree-multi-1km_P1D", #"cmems_obs-oc_atl_bgc-plankton_nrt_l4-gapfree-multi-1km_P1D",
             names=("Mass Concentration of Chlorophyll-a in Sea Water",),
             variables=("CHL",),
+            options={
+                "time_offset": 85,
+                "train_spec": OceanData.REGISTRY["chlorophyll"],
+            }
         ),
         "oxygen": DatasetSpec(
             short_name="o2",
@@ -103,13 +107,13 @@ class ForecastData(OceanData):
             }
         ),
         "thermal_front_freq": DatasetSpec(
-            short_name="front_freqency",
+            short_name="thermal_fronts",
             source="cmems",
             location="METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2",
             names=("Frequency of Thermal Fronts",),
             variables=("analysed_sst",),
             options={
-                "window": 30,
+                "time_offset": 30,
                 "wide_bbox": (-27.5, -23.5, 35.8, 39.8),
                 "function": "get_front_frequency",
                 "function_kwargs": {

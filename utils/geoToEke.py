@@ -1,5 +1,6 @@
 import xarray as xr
 from utils.caching import subset_path
+from utils.dataCropper import nearest_date
 from data.prepareGridData import to_target_grid
 
 _GROUPS = {
@@ -63,6 +64,8 @@ def get_eke(data, spec, user_trange, full_trange, user_bbox, frequency="day", re
         clim = climatology(geo_data, clim_path, frequency)
 
     # 3. crop time, then subtract the baseline
+    subset = nearest_date(geo_data, user_trange)
+
     subset = geo_data.sel(time=slice(start_dt, end_dt))
     if subset.sizes["time"] == 0:
         raise ValueError(f"No data inside {user_trange}")

@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 import xarray as xr
 from utils.caching import subset_path
+from utils.dataCropper import nearest_date
 from data.prepareGridData import to_target_grid
 
 _GROUPS = {
@@ -35,8 +36,8 @@ def get_sst_anomaly(data, spec, user_trange, full_trange, user_bbox, frequency="
     if path.exists() and refresh is False:
         return xr.load_dataset(path)
 
-    data_variables = list(spec.variables)
-    sst_data = data[data_variables[0]]
+    data_variable = list(spec.variables)[0]
+    sst_data = data[[data_variable]] 
 
     if train_spec is None:
         clim_path = subset_path(spec=spec, bbox=user_bbox, trange=full_trange, name="clim")
@@ -48,13 +49,12 @@ def get_sst_anomaly(data, spec, user_trange, full_trange, user_bbox, frequency="
     else:
         clim = climatology(sst_data, clim_path, frequency)       # baseline from ALL of `data`
     
-    start_dt, end_dt = user_trange
+    subset = nearest_date(sst_data, user_trange)
+
     min_lon, max_lon, min_lat, max_lat = user_bbox
-    subset = sst_data.sel(
-        time = slice(start_dt, end_dt),
-        longitude= slice(min_lon, max_lon),
-        latitude= slice(min_lat, max_lat),
-    )
+    subset = subset.sel(longitude=slice(min_lon, max_lon),
+                        latitude=slice(min_lat, max_lat))
+
     clim = clim.sel(
         longitude=slice(min_lon, max_lon), 
         latitude=slice(min_lat, max_lat)
