@@ -47,7 +47,7 @@ class ConvBlock(nn.Module):
 class SpeciesCNN(nn.Module):
     def __init__(self, in_channels=17, n_species=len(SPECIES_LIST), dropout=0.4, head_hidden=0):
         super().__init__()
-        self.features = nn.Sequential(
+        self.backbone = nn.Sequential(
             ConvBlock(in_channels, 64, strided_dilated=True, pool=False),
             ConvBlock(64, 128, strided_dilated=False, pool=True),
             ConvBlock(128, 256, strided_dilated=False, pool=False),
