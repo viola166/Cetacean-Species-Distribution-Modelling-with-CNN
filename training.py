@@ -20,27 +20,40 @@ for kind, ds in channel_dss.items():
         print(f"  {var}: {ds[var].dims} {ds[var].shape}")
 
 skew_eps=1e-3
-data, loaders, pi, transforms, n_stats = prepare_data(channel_dss=channel_dss, skew_eps=skew_eps)
-in_channels = get_num_in_channels(data)
+splits_processed = prepare_data(channel_dss=channel_dss, skew_eps=skew_eps)
+# data, loaders, pi, transforms, n_stats
 
-model = SpeciesCNN(in_channels=in_channels, head_hidden=64)
+for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
+    in_channels = get_num_in_channels(data)
 
-run_dir = Path("runs/nnpu_fold_8")
-run_dir.mkdir(parents=True, exist_ok=True)
+    model = SpeciesCNN(in_channels=in_channels, head_hidden=64)
 
-model.preproc = {
-    "transforms": transforms,                                   # {var: kind} from remove_skewness
-    "stats": {name: {v: [float(m), float(s)] for v, (m, s) in d.items()}
-                for name, d in n_stats.items()},
-    "patch_size": NUMBER_OF_PIXELS_PER_PATCH,
-    "chl_lead_weeks": 12,
-    "channel_order": list(n_stats.keys()),      # variable names in the exact order make_patches stacks them
-    "use_mask": False,
-    "skew_eps": skew_eps,
-}
+    run_dir = Path(f"runs/run1/nnpu_split_{i}")
+    run_dir.mkdir(parents=True, exist_ok=True)
 
-model.train_sdm(loaders, pi, run_dir=run_dir)
+    model.preproc = {
+        "transforms": transforms,                                   # {var: kind} from remove_skewness
+        "stats": {name: {v: [float(m), float(s)] for v, (m, s) in d.items()}
+                    for name, d in n_stats.items()},
+        "patch_size": NUMBER_OF_PIXELS_PER_PATCH,
+        "chl_lead_weeks": 12,
+        "channel_order": list(n_stats.keys()),      # variable names in the exact order make_patches stacks them
+        "use_mask": False,
+        "skew_eps": skew_eps,
+    }
 
-test_auc = model.evaluate_sdm(loaders["test"])          # evaluate once, after model selection
-with open(run_dir / "test_metrics.json", "w") as f:
-    json.dump(test_auc, f, indent=2)
+    model.train_sdm(loaders, pi, run_dir=run_dir)
+
+    test_auc = model.evaluate_sdm(loaders["test"])          # evaluate once, after model selection
+    with open(run_dir / "test_metrics.json", "w") as f:
+        json.dump(test_auc, f, indent=2)
+
+rows = []
+for p in sorted(Path("runs/run1").glob("nnpu_split_*/test_metrics.json")):
+    m = json.load(open(p))
+    m["split"] = p.parent.name
+    rows.append(m)
+
+df = pd.DataFrame(rows).set_index("split")
+print(df)                                   # per-fold table
+print(df.agg(["mean", "std", "min", "max"]).T)   # summary per metric
