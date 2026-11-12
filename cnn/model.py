@@ -61,21 +61,12 @@ class SpeciesCNN(nn.Module):
         self.head_hidden = head_hidden
 
         if head_hidden == 0:
-            # linear head per species: batched as one (S, 512) weight matrix
-            self.head_w = nn.Parameter(torch.empty(n_species, 512))
-            self.head_b = nn.Parameter(torch.zeros(n_species))
-            bound = 1 / np.sqrt(512)           # same init as nn.Linear
-            nn.init.uniform_(self.head_w, -bound, bound)
+            self.heads = nn.ModuleList([nn.Linear(512, 1) for _ in range(n_species)])
         else:
-            # small MLP per species: 512 -> head_hidden -> 1, batched over species
-            self.head_w1 = nn.Parameter(torch.empty(n_species, 512, head_hidden))
-            self.head_b1 = nn.Parameter(torch.zeros(n_species, head_hidden))
-            self.head_w2 = nn.Parameter(torch.empty(n_species, head_hidden, 1))
-            self.head_b2 = nn.Parameter(torch.zeros(n_species, 1))
-            b1 = 1 / np.sqrt(512)
-            b2 = 1 / np.sqrt(head_hidden)
-            nn.init.uniform_(self.head_w1, -b1, b1)
-            nn.init.uniform_(self.head_w2, -b2, b2)
+            self.heads = nn.ModuleList([
+                nn.Sequential(nn.Linear(512, head_hidden), nn.ReLU(), nn.Linear(head_hidden, 1))
+                for _ in range(n_species)
+            ])
 
         self.preproc = None   # set before train_sdm: dict with transforms, stats, etc.
 
@@ -84,12 +75,9 @@ class SpeciesCNN(nn.Module):
     #     return self.fc(self.dropout(z))
 
     def forward_logits(self, x):
-        z = self.dropout(self.backbone(x).flatten(1))          # B x 512
-        if self.head_hidden == 0:
-            return z @ self.head_w.T + self.head_b             # B x S
-        h = F.relu(torch.einsum("bf,sfh->bsh", z, self.head_w1) + self.head_b1)
-        return (torch.einsum("bsh,sho->bso", h, self.head_w2) + self.head_b2).squeeze(-1)  # B x S
-
+        z = self.dropout(self.backbone(x).flatten(1))            # B x 512
+        return torch.cat([h(z) for h in self.heads], dim=1)      # B x S
+    
     def forward(self, x):
         return torch.sigmoid(self.forward_logits(x))   # species pseudo-probabilities
 
