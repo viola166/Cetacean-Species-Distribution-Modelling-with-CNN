@@ -24,7 +24,7 @@ def widen_trange(trange, wide, time_offset):
     if time_offset is not None:
         t0 = t0 - pd.Timedelta(days=int(time_offset) - 1)
 
-    return (t0.isoformat()[:10], t1.isoformat()[:10])
+    return (t0.isoformat(), t1.isoformat())
 
 
 def nearest_date(ds, trange, in_chunks=False):
@@ -32,7 +32,7 @@ def nearest_date(ds, trange, in_chunks=False):
     start, end = (pd.Timestamp(t).normalize() for t in trange)
     today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
 
-    if start == end and start >= today:          # forecast request: nearest available step
+    if start == end: #and start >= today:          # forecast request: nearest available step
         subset = ds.sel(time=[pd.Timestamp(start_dt)], method="nearest")
         gap = abs(pd.Timestamp(subset.time.values[0]) - pd.Timestamp(start_dt))
         print(f"Nearest step is {gap} from {start_dt}")

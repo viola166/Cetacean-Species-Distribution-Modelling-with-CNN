@@ -439,7 +439,7 @@ class OceanData:
         self.specs = {k: self.REGISTRY[k] for k in self.kinds}
         self.min_lon, self.max_lon = minimum_longitude, maximum_longitude
         self.min_lat, self.max_lat = minimum_latitude, maximum_latitude
-        self.start_dt, self.end_dt = start_dt, end_dt
+        self.start_dt, self.end_dt = pd.Timestamp(start_dt).isoformat(), pd.Timestamp(end_dt).isoformat()
         self.refresh = refresh
         self._ds = {}   # kind -> xarray.Dataset, filled lazily
   

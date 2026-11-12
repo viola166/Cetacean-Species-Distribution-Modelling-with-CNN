@@ -45,7 +45,7 @@ class ConvBlock(nn.Module):
 
 
 class SpeciesCNN(nn.Module):
-    def __init__(self, in_channels=17, n_species=len(SPECIES_LIST), dropout=0.4):
+    def __init__(self, in_channels=17, n_species=len(SPECIES_LIST), dropout=0.4, head_hidden=0):
         super().__init__()
         self.features = nn.Sequential(
             ConvBlock(in_channels, 64, strided_dilated=True, pool=False),
@@ -56,12 +56,37 @@ class SpeciesCNN(nn.Module):
         self.in_channels = in_channels
         self.dropout = nn.Dropout(dropout)
         self.dropout_p = dropout                 # the float, for saving
-        self.fc = nn.Linear(512, n_species)
+        self.fc = nn.Linear(512, n_species)      # fully connected layers
+        
+        self.head_hidden = head_hidden
+
+        if head_hidden == 0:
+            # linear head per species: batched as one (S, 512) weight matrix
+            self.head_w = nn.Parameter(torch.empty(n_species, 512))
+            self.head_b = nn.Parameter(torch.zeros(n_species))
+            bound = 1 / np.sqrt(512)           # same init as nn.Linear
+            nn.init.uniform_(self.head_w, -bound, bound)
+        else:
+            # small MLP per species: 512 -> head_hidden -> 1, batched over species
+            self.head_w1 = nn.Parameter(torch.empty(n_species, 512, head_hidden))
+            self.head_b1 = nn.Parameter(torch.zeros(n_species, head_hidden))
+            self.head_w2 = nn.Parameter(torch.empty(n_species, head_hidden, 1))
+            self.head_b2 = nn.Parameter(torch.zeros(n_species, 1))
+            nn.init.kaiming_uniform_(self.head_w1.view(-1, head_hidden), a=5 ** 0.5)
+            nn.init.kaiming_uniform_(self.head_w2.view(-1, 1), a=5 ** 0.5)
+
         self.preproc = None   # set before train_sdm: dict with transforms, stats, etc.
 
+    # def forward_logits(self, x):
+    #     z = self.features(x).flatten(1)        # B x 512
+    #     return self.fc(self.dropout(z))
+
     def forward_logits(self, x):
-        z = self.features(x).flatten(1)        # B x 512
-        return self.fc(self.dropout(z))
+        z = self.dropout(self.backbone(x).flatten(1))          # B x 512
+        if self.head_hidden == 0:
+            return z @ self.head_w.T + self.head_b             # B x S
+        h = F.relu(torch.einsum("bf,sfh->bsh", z, self.head_w1) + self.head_b1)
+        return (torch.einsum("bsh,sho->bso", h, self.head_w2) + self.head_b2).squeeze(-1)  # B x S
 
     def forward(self, x):
         return torch.sigmoid(self.forward_logits(x))   # species pseudo-probabilities
@@ -176,6 +201,7 @@ class SpeciesCNN(nn.Module):
             "best_val_mean_auc": self.best_auc,
             "n_epochs": len(self.history),
             "preprocessing": self.preproc,
+            "head_hidden": self.head_hidden,
             **(extra or {}),      # e.g. fold, in_channels, use_mask, max_ratio, batch_size, seed
         }
         with open(run_dir / "meta.json", "w") as f:
@@ -188,7 +214,8 @@ class SpeciesCNN(nn.Module):
             meta = json.load(f)
         model = cls(in_channels=meta["in_channels"],
             n_species=len(meta["species_list"]),
-            dropout=meta.get("dropout", 0.4))
+            dropout=meta.get("dropout", 0.4),
+            head_hidden=meta.get("head_hidden", 0))
         model.load_state_dict(torch.load(run_dir / "model_best.pt", map_location=device))
         model.preproc = meta["preprocessing"]
         return model.to(device).eval(), meta

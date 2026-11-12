@@ -5,7 +5,7 @@ from data.prepareDataset import prepare_data, get_num_in_channels
 from data.prepareGridData import preprocess_channel, make_patches
 from datetime import date
 
-#-------random location for prediction--------
+#-------random location (&time) for prediction--------
 LAT = 37.81
 LON = -24.94
 FORECAST_TIME = date.today()

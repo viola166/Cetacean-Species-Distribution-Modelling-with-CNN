@@ -23,9 +23,9 @@ skew_eps=1e-3
 data, loaders, pi, transforms, n_stats = prepare_data(channel_dss=channel_dss, skew_eps=skew_eps)
 in_channels = get_num_in_channels(data)
 
-model = SpeciesCNN(in_channels=in_channels)
+model = SpeciesCNN(in_channels=in_channels, head_hidden=64)
 
-run_dir = Path("runs/nnpu_fold_7")
+run_dir = Path("runs/nnpu_fold_8")
 run_dir.mkdir(parents=True, exist_ok=True)
 
 model.preproc = {
