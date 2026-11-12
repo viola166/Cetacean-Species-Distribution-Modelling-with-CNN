@@ -109,10 +109,13 @@ def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None, incl
 
     print("got csv, split, and channel_dss")
 
+    splits_processed = []
     # preprocess data in bring in correct format
-    data, loaders, pi, transforms, norm_stats = preprocess_and_build(csv_data, split_csv_data_keys[0], channel_dss, incl_mask_channels, skew_eps=skew_eps)     # for now only training the first split
+    for split in split_csv_data_keys:
+        data, loaders, pi, transforms, norm_stats = preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels, skew_eps=skew_eps)     # for now only training the first split
+        splits_processed.append((data, loaders, pi, transforms, norm_stats))
 
-    return data, loaders, pi, transforms, norm_stats
+    return splits_processed
 
 
 def get_num_in_channels(occurrence_ds):
