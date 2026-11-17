@@ -68,10 +68,13 @@ class SpeciesCNN(nn.Module):
                 for _ in range(n_species)
             ])
 
+        # MLR: c = 1/(1+b^2) per species; b=1 -> c=0.5 at init
+        self.b = nn.Parameter(torch.ones(n_species))
+
         self.preproc = None   # set before train_sdm: dict with transforms, stats, etc.
 
     # def forward_logits(self, x):
-    #     z = self.backbone(x).flatten(1)        # B x 512
+    #     z = self.features(x).flatten(1)        # B x 512
     #     return self.fc(self.dropout(z))
 
     def forward_logits(self, x):
@@ -81,8 +84,17 @@ class SpeciesCNN(nn.Module):
     def forward(self, x):
         return torch.sigmoid(self.forward_logits(x))   # species pseudo-probabilities
 
+    @property
+    def c(self):                       # (S,) learned label frequency
+        return 1.0 / (1.0 + self.b ** 2)
+
+    @torch.no_grad()
+    def predict_presence(self, x):     # P(present | x), MLR-corrected
+        z = self.forward_logits(x)
+        return torch.sigmoid(z + torch.log1p(self.b ** 2))
+
     # prepare_data must be called before and its outputs serve as input + important for initializing model with correct num of input channels
-    def train_sdm(self, loaders, pi, device="cuda", epochs=N_EPOCHS, run_dir=None):
+    def train_sdm(self, loaders, pi=None, device="cuda", loss_type="mlr", epochs=N_EPOCHS, run_dir=None):
         """
         Train the CNN with the nnPU loss and keep the weights of the epoch with the best
         mean validation AUC.
@@ -97,10 +109,19 @@ class SpeciesCNN(nn.Module):
         """
         # ---- setup: model and prior must live on the same device as the batches ----
         self.to(device)
-        pi = pi.to(device)
+        if pi is not None:
+            pi = pi.to(device)
 
         # plain SGD (no momentum); weight_decay shrinks the weights a little each step (regularisation)
-        opt = torch.optim.SGD(self.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        # opt = torch.optim.SGD(self.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        other = [p for n, p in self.named_parameters() if n != "b"]
+        if loss_type == "mlr":
+            opt = torch.optim.SGD(
+                [{"params": other},
+                {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],   # tune this lr
+                lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        else:
+            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=1e-3)
         # learning rate x 0.1 once, at the halfway epoch: big steps first, fine-tuning afterwards
         sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[epochs // 2], gamma=0.1)
 
@@ -120,7 +141,10 @@ class SpeciesCNN(nn.Module):
                 # x: (B, C, 13, 13) patches, y: (B, S) multi-hot labels, w: (B, S) de-clustering weights
                 x, y, w = x.to(device), y.to(device), w.to(device)
 
-                loss = nnpu_loss(self.forward_logits(x), y, pi, w)    # self.forward_logits(x) = logits (B, S); y=1 positive, y=0 unlabelled
+                # loss = nnpu_loss(self.forward_logits(x), y, pi, w)    # self.forward_logits(x) = logits (B, S); y=1 positive, y=0 unlabelled
+                logits = self.forward_logits(x)
+                loss = (mlr_loss(logits, y, self.b, w) if loss_type == "mlr"
+                        else nnpu_loss(logits, y, pi, w))
 
                 opt.zero_grad()                # clear gradients from the previous batch
                 loss.backward()                # gradients of the loss w.r.t. all weights
@@ -151,7 +175,7 @@ class SpeciesCNN(nn.Module):
                     if 0 < y[:, s].sum() < len(y)}
             mean_auc = float(np.mean(list(aucs.values()))) if aucs else float("nan")
 
-            history.append({"epoch": epoch, "lr": lr, "train_loss": running/n, "val_mean_auc": mean_auc, **{f"auc_{sp}": v for sp, v in aucs.items()}})
+            history.append({"epoch": epoch, "lr": lr, "train_loss": running/n, "val_mean_auc": mean_auc, **{f"auc_{sp}": v for sp, v in aucs.items()}, "mean_c": float(self.c.mean()) if loss_type == "mlr" else float("nan"),})
 
             # ---- keep the best epoch ----
             if mean_auc > best_auc:            # NaN compares False, so it never counts as an improvement
@@ -186,17 +210,31 @@ class SpeciesCNN(nn.Module):
             "species_list": list(SPECIES_LIST),
             "in_channels": self.in_channels,
             "dropout": self.dropout_p,
-            "pi": pi.cpu().tolist(),
             "best_epoch": self.best_epoch,
             "best_val_mean_auc": self.best_auc,
             "n_epochs": len(self.history),
             "preprocessing": self.preproc,
             "head_hidden": self.head_hidden,
+            "pi": None if pi is None else pi.cpu().tolist(),
+            "loss_type": getattr(self, "loss_type", None),
+            "c_hat": self.c.detach().cpu().tolist(),
             **(extra or {}),      # e.g. fold, in_channels, use_mask, max_ratio, batch_size, seed
         }
         with open(run_dir / "meta.json", "w") as f:
             json.dump(meta, f, indent=2)
 
+    # @classmethod
+    # def load_run(cls, run_dir, device="cpu"):
+    #     run_dir = Path(run_dir)
+    #     with open(run_dir / "meta.json") as f:
+    #         meta = json.load(f)
+    #     model = cls(in_channels=meta["in_channels"],
+    #         n_species=len(meta["species_list"]),
+    #         dropout=meta.get("dropout", 0.4),
+    #         head_hidden=meta.get("head_hidden", 0))
+    #     model.load_state_dict(torch.load(run_dir / "model_best.pt", map_location=device))
+    #     model.preproc = meta["preprocessing"]
+    #     return model.to(device).eval(), meta
     @classmethod
     def load_run(cls, run_dir, device="cpu"):
         run_dir = Path(run_dir)
@@ -206,7 +244,11 @@ class SpeciesCNN(nn.Module):
             n_species=len(meta["species_list"]),
             dropout=meta.get("dropout", 0.4),
             head_hidden=meta.get("head_hidden", 0))
-        model.load_state_dict(torch.load(run_dir / "model_best.pt", map_location=device))
+
+        sd = torch.load(run_dir / "model_best.pt", map_location=device)
+        sd.setdefault("b", model.b.detach().cpu())   # older (pre-MLR) checkpoints have no "b"
+        model.load_state_dict(sd)
+
         model.preproc = meta["preprocessing"]
         return model.to(device).eval(), meta
 
@@ -274,3 +316,25 @@ def nnpu_loss(logits, y, pi, w=None, gamma=1.0, beta=0.0):
         -gamma * neg_risk,
     )
     return risk.sum()               # or risk.mean()
+
+
+def mlr_loss(logits, y, b, w=None, eps=1e-8):
+    """
+    Modified logistic regression for PU learning (Jaskie, Elkan & Spanias, 2019).
+    Models P(labelled | x) = 1 / (1 + b^2 + exp(-z)), so label frequency c = 1/(1+b^2).
+
+    logits : (B, S) raw model outputs z
+    y      : (B, S) 1 = recorded presence, 0 = unlabelled
+    b      : (S,)   learned parameter, one per species
+    w      : (B, S) optional sample weights
+    """
+    y = y.float()
+    b2 = b ** 2 + eps
+    log_den = torch.logaddexp(torch.log1p(b2).expand_as(logits), -logits)   # log(1 + b^2 + e^{-z})
+    log_g   = -log_den                                                      # log P(s=1|x)
+    log_1mg = torch.logaddexp(torch.log(b2).expand_as(logits), -logits) - log_den  # log P(s=0|x)
+
+    nll = -(y * log_g + (1.0 - y) * log_1mg)                                # (B, S)
+    if w is None:
+        return nll.mean()
+    return ((w * nll).sum(0) / w.sum(0).clamp(min=1e-8)).mean()

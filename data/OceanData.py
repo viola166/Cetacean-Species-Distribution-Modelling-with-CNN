@@ -211,10 +211,11 @@ def load_any(spec, bbox, trange, refresh):
 
     # add time window for thermal front frequency + chlorophyll time offset
     time_offset = spec.options.get("time_offset")
+    window = spec.options.get("window")
 
     # override bbox and trange if REGISTRY options are broader
     bbox = widen_bbox(bbox, spec.options.get("wide_bbox"))
-    trange = widen_trange(trange, spec.options.get("clim_period"), time_offset)
+    trange = widen_trange(trange, spec.options.get("clim_period"), time_offset, window)
 
     ds = LOADERS[spec.source](spec, bbox, trange, refresh)
     # apply any post-processing function (e.g. climatology, anomaly, EKE, thermal fronts)
@@ -365,7 +366,7 @@ class OceanData:
             names=("Frequency of Thermal Fronts",),
             variables=("analysed_sst",),
             options={
-                "time_offset": 30,                          # 30 days prior for average freq within a 30 day window
+                "window": 30,                          # 30 days prior for average freq within a 30 day window
                 "wide_bbox": (-27.5, -23.5, 35.8, 39.8),
                 "function": "get_front_frequency",
                 "function_kwargs": {

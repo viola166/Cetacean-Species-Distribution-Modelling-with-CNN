@@ -12,17 +12,21 @@ def widen_bbox(bbox, wide):
             min(bbox[2], wide[2]), max(bbox[3], wide[3]))
 
 
-def widen_trange(trange, wide, time_offset):
+def widen_trange(trange, wide, time_offset=None, window=None):
     """Smallest range containing `trange` and `wide`, padded back by the window."""
     t0 = pd.Timestamp(trange[0])
     t1 = pd.Timestamp(trange[1])
+
+    if time_offset is not None:               # shift, don't widen
+        shift = pd.Timedelta(days=int(time_offset))
+        t0, t1 = t0 - shift, t1 - shift
 
     if wide is not None:
         t0 = min(t0, pd.Timestamp(wide[0]))
         t1 = max(t1, pd.Timestamp(wide[1]))
 
-    if time_offset is not None:
-        t0 = t0 - pd.Timedelta(days=int(time_offset) - 1)
+    if window is not None:
+        t0 = t0 - pd.Timedelta(days=int(window) - 1)
 
     return (t0.isoformat(), t1.isoformat())
 

@@ -268,11 +268,15 @@ def get_front_frequency(data, spec, user_bbox, wider_bbox, user_trange, full_tra
 
     # drop the time padding, then crop the spatial margin down to the user's box
     min_lon, max_lon, min_lat, max_lat = user_bbox
+    u0, u1 = (pd.Timestamp(t) for t in user_trange)
     freq = freq.sel(
-        time=slice(t0, t1),
-        latitude=slice(min_lat, max_lat),
-        longitude=slice(min_lon, max_lon),
+        latitude=slice(min_lat, max_lat), 
+        longitude=slice(min_lon, max_lon)
     )
+    freq_full = freq
+    freq = freq.sel(time=slice(u0, u1))
+    if freq.sizes["time"] == 0:      # user_trange falls between time steps
+        freq = freq_full.sel(time=[u1], method="nearest")
     freq_ds = freq.to_dataset(name="front_frequency")
     freq_ds = to_target_grid(freq_ds)
     freq_ds.to_netcdf(path)
