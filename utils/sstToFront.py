@@ -150,10 +150,12 @@ def build_front_covariate_stack(xdata_final, ydata_final, field,
     return channels
 
 
-def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange, refresh=False):
+def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange, refresh=False, channel=None):
     # final-product cache: stored in the same form it is returned (Dataset)
     path = subset_path(spec=spec, bbox=user_bbox, trange=user_trange, name="frontCh")
     if path.exists() and refresh is False:
+        if channel is not None:
+            return xr.load_dataset(path)[[channel]]
         return xr.load_dataset(path)
 
     data_variables = list(spec.variables)
@@ -213,6 +215,8 @@ def get_front_channels(data, spec, user_bbox, wider_bbox, user_trange, refresh=F
     out = da.to_dataset(dim="channel")
     out = to_target_grid(out)
     out.to_netcdf(path)
+    if channel is not None:
+        out = out[[channel]]
     return out
 
 

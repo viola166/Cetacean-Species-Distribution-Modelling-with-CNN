@@ -357,6 +357,9 @@ class OceanData:
             options={
                 "wide_bbox": (-27.5, -23.5, 35.8, 39.8),                       # necessary margin to compute CCA, always required (for standard bbox that is to small)
                 "function" : "get_front_channels",
+                "function_kwargs": {
+                    "channel": "distance",                                     # choose one channel to prevent overfitting
+                }
             }
         ),
         "thermal_front_freq": DatasetSpec(

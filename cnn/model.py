@@ -8,6 +8,8 @@ from data.prepareDataset import preprocess_and_build
 from data.prepareCSVData import load_csv_data, SPECIES_LIST
 import json
 from pathlib import Path
+import numpy as np
+from scipy.stats import spearmanr
 
 N_EPOCHS = 60
 
@@ -197,6 +199,7 @@ class SpeciesCNN(nn.Module):
             self.save_run(run_dir, pi)
         return self
 
+
     def save_run(self, run_dir, pi, extra=None):
         run_dir = Path(run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -263,6 +266,26 @@ class SpeciesCNN(nn.Module):
         return {sp: float(roc_auc_score(y[:, s], p[:, s]))
                 for s, sp in enumerate(SPECIES_LIST) if 0 < y[:, s].sum() < len(y)}
 
+
+    @torch.no_grad()
+    def evaluate_boyce(self, loader, device="cuda", min_presences=10):
+        """Per-species continuous Boyce index on one loader. Returns {species: boyce}."""
+        self.to(device).eval()
+        zs, ys, ws = [], [], []
+        for x, y, w in loader:
+            zs.append(self.forward_logits(x.to(device)).cpu()); ys.append(y); ws.append(w)
+        z, y, w = torch.cat(zs).numpy(), torch.cat(ys).numpy(), torch.cat(ws).numpy()
+
+        out = {}
+        for s, sp in enumerate(SPECIES_LIST):
+            pres = y[:, s] == 1
+            if pres.sum() < min_presences:
+                continue
+            b, _, _ = boyce_index(z[pres, s], z[:, s], w_pres=w[pres, s], w_bg=w[:, s])
+            if not np.isnan(b):
+                out[sp] = b
+        return out
+
 # ---------------------------------------------------------------- 3. Loss
 def species_weights(labels: np.ndarray, mask: np.ndarray):
     """pi_k = observation frequency of species k in the training set;
@@ -278,6 +301,39 @@ def masked_weighted_bce(logits, y, mask, inv_freq, absence_scale=0.1):
     bce = F.binary_cross_entropy_with_logits(logits, y, reduction="none")
     w = inv_freq.unsqueeze(0) * torch.where(y > 0.5, 1.0, absence_scale)
     return (bce * w * mask).sum() / mask.sum().clamp(min=1.0)
+
+def boyce_index(s_pres, s_bg, n_bins=100, window=0.1, w_pres=None, w_bg=None):
+    """
+    s_pres : scores at recorded presences      (n_p,)
+    s_bg   : scores at background/all samples  (n_b,)
+    window : width of the moving window, as a fraction of the score range
+    Returns (boyce, bin_centers, pe_ratio).
+    """
+    s_pres, s_bg = np.asarray(s_pres), np.asarray(s_bg)
+    if len(s_pres) < 5:
+        return np.nan, None, None
+
+    w_pres = np.ones_like(s_pres) if w_pres is None else np.asarray(w_pres)
+    w_bg   = np.ones_like(s_bg)   if w_bg   is None else np.asarray(w_bg)
+
+    lo, hi = s_bg.min(), s_bg.max()
+    if hi - lo < 1e-9:
+        return np.nan, None, None
+    half = window * (hi - lo) / 2
+    centers = np.linspace(lo + half, hi - half, n_bins)
+
+    P, E = [], []
+    for c in centers:
+        P.append(w_pres[(s_pres >= c - half) & (s_pres <= c + half)].sum() / w_pres.sum())
+        E.append(w_bg  [(s_bg   >= c - half) & (s_bg   <= c + half)].sum() / w_bg.sum())
+    P, E = np.array(P), np.array(E)
+
+    ok = E > 0                                   # skip windows with no background
+    if ok.sum() < 3:
+        return np.nan, None, None
+    pe = P[ok] / E[ok]
+    rho = spearmanr(centers[ok], pe).correlation
+    return float(rho), centers[ok], pe
 
 
 def nnpu_loss(logits, y, pi, w=None, gamma=1.0, beta=0.0):
