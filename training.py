@@ -2,7 +2,6 @@ from cnn.model import SpeciesCNN
 from data.prepareDataset import prepare_data, get_num_in_channels
 from data.prepareGridData import NUMBER_OF_PIXELS_PER_PATCH
 from data.OceanData import OceanData
-from data.ForecastData import ForecastData
 from pathlib import Path
 import json
 import xarray as xr
@@ -47,6 +46,10 @@ for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
     test_auc = model.evaluate_sdm(loaders["test"])          # evaluate once, after model selection
     with open(run_dir / "test_metrics.json", "w") as f:
         json.dump(test_auc, f, indent=2)
+
+    test_boyce = model.evaluate_boyce(loaders["test"])      # <-- new
+    with open(run_dir / "test_boyce.json", "w") as f:
+        json.dump(test_boyce, f, indent=2)
 
 rows = []
 for p in sorted(Path("runs/run3").glob("nnpu_split_*/test_metrics.json")):
