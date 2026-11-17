@@ -28,7 +28,7 @@ for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
 
     model = SpeciesCNN(in_channels=in_channels, head_hidden=64)
 
-    run_dir = Path(f"runs/run1/nnpu_split_{i}")
+    run_dir = Path(f"runs/run3/nnpu_split_{i}")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     model.preproc = {
@@ -42,14 +42,14 @@ for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
         "skew_eps": skew_eps,
     }
 
-    model.train_sdm(loaders, pi, run_dir=run_dir)
+    model.train_sdm(loaders, pi=None, loss_type="mlr", run_dir=run_dir)
 
     test_auc = model.evaluate_sdm(loaders["test"])          # evaluate once, after model selection
     with open(run_dir / "test_metrics.json", "w") as f:
         json.dump(test_auc, f, indent=2)
 
 rows = []
-for p in sorted(Path("runs/run1").glob("nnpu_split_*/test_metrics.json")):
+for p in sorted(Path("runs/run3").glob("nnpu_split_*/test_metrics.json")):
     m = json.load(open(p))
     m["split"] = p.parent.name
     rows.append(m)
