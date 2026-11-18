@@ -19,7 +19,8 @@ for kind, ds in channel_dss.items():
         print(f"  {var}: {ds[var].dims} {ds[var].shape}")
 
 skew_eps=1e-3
-splits_processed = prepare_data(channel_dss=channel_dss, skew_eps=skew_eps)
+batch_size=64
+splits_processed = prepare_data(channel_dss=channel_dss, skew_eps=skew_eps, batch_size=batch_size)
 # data, loaders, pi, transforms, n_stats
 
 for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
@@ -39,6 +40,7 @@ for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
         "channel_order": list(n_stats.keys()),      # variable names in the exact order make_patches stacks them
         "use_mask": False,
         "skew_eps": skew_eps,
+        "batch_size": batch_size,
     }
 
     model.train_sdm(loaders, pi=None, loss_type="mlr", run_dir=run_dir)
