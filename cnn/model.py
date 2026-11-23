@@ -87,7 +87,9 @@ class SpeciesCNN(nn.Module):
         return torch.sigmoid(self.forward_logits(x))   # species pseudo-probabilities
 
     @property
-    def c(self):                       # (S,) learned label frequency
+    def c(self):
+        if not self.b.requires_grad:
+            raise RuntimeError("c is only defined for MLR-trained models")
         return 1.0 / (1.0 + self.b ** 2)
 
     @torch.no_grad()
@@ -111,21 +113,50 @@ class SpeciesCNN(nn.Module):
         """
         # ---- setup: model and prior must live on the same device as the batches ----
         self.to(device)
-        if pi is not None:
-            pi = pi.to(device)
+        assert loss_type in ("mlr", "nnpu"), f"unknown loss_type: {loss_type}"
+        if loss_type == "nnpu":
+            assert pi is not None, "nnpu needs pi"
+            pi = pi.to(device).float()                  # float32, avoids float64 promotion
 
-        # plain SGD (no momentum); weight_decay shrinks the weights a little each step (regularisation)
-        # opt = torch.optim.SGD(self.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        # # plain SGD (no momentum); weight_decay shrinks the weights a little each step (regularisation)
+        # # opt = torch.optim.SGD(self.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        # other = [p for n, p in self.named_parameters() if n != "b"]
+        # if loss_type == "mlr":
+        #     opt = torch.optim.SGD(
+        #         [{"params": other},
+        #         {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],   # tune this lr
+        #         lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        # else:
+        #     opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        
+        # AdamW: per-parameter step scaling (helps with small/saturating gradients),
+        # weight decay is decoupled from the gradient (applied directly to the weights)
         other = [p for n, p in self.named_parameters() if n != "b"]
         if loss_type == "mlr":
-            opt = torch.optim.SGD(
+            opt = torch.optim.AdamW(
                 [{"params": other},
-                {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],   # tune this lr
-                lr=1e-3, momentum=0.0, weight_decay=1e-3)
-        else:
-            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=1e-3)
+                 {"params": [self.b], "lr": 1e-3, "weight_decay": 0.0}],   # b: no decay, own lr
+                lr=3e-4, weight_decay=1e-2)
+        else: # loss_type == "nnpu"
+            opt = torch.optim.AdamW(other, lr=3e-4, weight_decay=1e-2)
         # learning rate x 0.1 once, at the halfway epoch: big steps first, fine-tuning afterwards
         sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[epochs // 2], gamma=0.1)
+
+                # record the optimizer/scheduler setup for meta.json
+        self.optimizer_info = {
+            "optimizer": type(opt).__name__,
+            "defaults": {k: list(v) if isinstance(v, tuple) else v
+                         for k, v in opt.defaults.items()
+                         if k in ("lr", "weight_decay", "betas", "eps", "momentum")},
+            "param_groups": [{"n_params": len(g["params"]),
+                              "lr": g["lr"],
+                              "weight_decay": g["weight_decay"]}
+                             for g in opt.param_groups],
+            "scheduler": type(sched).__name__,
+            "milestones": [epochs // 2],
+            "gamma": 0.1,
+            "epochs": epochs,
+        }
 
         # best-model tracking; -1.0 makes sure the first epoch counts as an improvement
         best_auc, best_state, best_epoch = -1.0, None, None
@@ -195,6 +226,7 @@ class SpeciesCNN(nn.Module):
             self.load_state_dict(best_state)
         self.history = pd.DataFrame(history)
         self.best_epoch, self.best_auc = best_epoch, best_auc
+        self.loss_type = loss_type
         if run_dir is not None:
             self.save_run(run_dir, pi)
         return self
@@ -220,7 +252,8 @@ class SpeciesCNN(nn.Module):
             "head_hidden": self.head_hidden,
             "pi": None if pi is None else pi.cpu().tolist(),
             "loss_type": getattr(self, "loss_type", None),
-            "c_hat": self.c.detach().cpu().tolist(),
+            "optimizer": getattr(self, "optimizer_info", None),   # <-- add
+            "c_hat": self.c.detach().cpu().tolist() if self.loss_type == "mlr" else None,
             **(extra or {}),      # e.g. fold, in_channels, use_mask, max_ratio, batch_size, seed
         }
         with open(run_dir / "meta.json", "w") as f:

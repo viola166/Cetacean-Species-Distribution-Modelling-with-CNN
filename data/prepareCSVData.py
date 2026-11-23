@@ -5,6 +5,8 @@ import warnings
 import numpy as np
 from data.prepareGridData import _valid_records, extract_patch, TARGET_GRID, NUMBER_OF_PIXELS_PER_PATCH
 from scipy.spatial import cKDTree
+from utils.caching import cache_to_path
+import pickle
 
 
 EVENT_TABLE_NAME = "event.txt"
@@ -24,7 +26,7 @@ SPECIES_LIST = [
 N_SPECIES = len(SPECIES_LIST)
 
 
-def load_csv_data(name_event_table=EVENT_TABLE_NAME, name_occurrence_table=OCCURRENCE_TABLE_NAME):
+def load_csv_data(name_event_table=EVENT_TABLE_NAME, name_occurrence_table=OCCURRENCE_TABLE_NAME, refresh=False):
     """
     Load target data from the event and occurrence tables, and return a dictionary of targets.
     the keys of the dictionary are the eventIDs.
@@ -40,8 +42,24 @@ def load_csv_data(name_event_table=EVENT_TABLE_NAME, name_occurrence_table=OCCUR
                 "decimalLatitude", "decimalLongitude"}}
     """
     target_dir = "targets"
+    cache_dir = Path(target_dir, ".cache")
     event_path = Path(target_dir, name_event_table)
     occurrence_path = Path(target_dir, name_occurrence_table)
+    cache_path = cache_to_path(
+        dir=cache_dir, name="filtered_table", suffix="pkl",
+        tag=f"{name_event_table}|{name_occurrence_table}",   # separate cache per table pair
+    )
+
+    if not refresh and cache_path.exists():
+        cache_mtime = cache_path.stat().st_mtime
+        if cache_mtime >= max(event_path.stat().st_mtime, occurrence_path.stat().st_mtime):
+            try:
+                with open(cache_path, "rb") as f:
+                    return pickle.load(f)
+            except Exception as e:  # corrupted/incompatible cache -> rebuild
+                warnings.warn(f"Could not read cache {cache_path} ({e}); rebuilding.")
+
+
     
     read_kw = dict(sep="\t", dtype=str, quoting=csv.QUOTE_NONE, encoding="utf-8-sig")
 
@@ -97,7 +115,15 @@ def load_csv_data(name_event_table=EVENT_TABLE_NAME, name_occurrence_table=OCCUR
         raise ValueError("Derived eventIDs are not unique; an ID like '<eventID>_2' already exists.")
 
     df = df.set_index("key")[["originalEventID", "scientificName"] + needed]
-    return df.to_dict("index")
+    data = df.to_dict("index")
+
+    # ---- write cache atomically so an interrupted run never leaves a partial file ----
+    tmp = cache_path.with_suffix(".tmp")
+    with open(tmp, "wb") as f:
+        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    tmp.replace(cache_path)
+
+    return data
 
 
 def compute_weights(Y_df, n_species=N_SPECIES, radius_px=3, time_days=2, power=0.5, max_ratio=1.5):

@@ -19,3 +19,11 @@ def subset_path(spec, bbox, trange, name, wider_trange=None):
     cache_dir = Path("output", f"{spec.short_name}_subsets")
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{name}_{dataset_id}.nc"
+
+
+def cache_to_path(dir, name, suffix="pkl", tag=""):
+    """Path to a cached dataset, unique for the directory and an optional tag."""
+    dir = Path(dir)
+    h = hashlib.md5(f"{dir}|{tag}".encode()).hexdigest()[:6]
+    dir.mkdir(parents=True, exist_ok=True)
+    return dir / f"{name}_{h}.{suffix}"
