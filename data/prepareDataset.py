@@ -122,7 +122,7 @@ def preprocess_and_build(csv_data, split, channel_dss, incl_mask_channels=False,
 
 def prepare_data(csv_data=None, channel_dss=None, split_csv_data_keys=None,
                  incl_mask_channels=False, skew_eps=1e-3, batch_size=64,
-                 cache_dir="cache", refresh=False):
+                 cache_dir="output/preprocessed", refresh=False):
 
     if csv_data is None:
         csv_data = cached(cache_dir, "csv_data", load_csv_data, refresh=refresh)
