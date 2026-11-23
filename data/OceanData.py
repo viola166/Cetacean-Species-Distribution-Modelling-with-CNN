@@ -167,7 +167,7 @@ def load_ifremer_sst(spec, bbox, trange, refresh):
         dss_one_day = []
         try:
             catalog = get_catalog_url(d)
-            data_urls = get_data_url(bbox, catalog)
+            data_urls = get_data_url(bbox, catalog, session)
 
             dss_one_day = [
                 xr.open_dataset(url, engine="pydap", session=session)

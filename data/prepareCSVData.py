@@ -15,7 +15,7 @@ SPECIES_LIST = [
     "Balaenoptera physalus",
     "Balaenoptera borealis",
     "Megaptera novaeangliae",
-    "Stenella Frontalis",
+    "Stenella frontalis",
     "Stenella coeruleoalba",
     "Tursiops truncatus",
     "Delphinus delphis",
