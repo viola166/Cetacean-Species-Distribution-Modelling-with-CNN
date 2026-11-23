@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+import pickle
 
 
 def subset_path(spec, bbox, trange, name, wider_trange=None):
@@ -27,3 +28,18 @@ def cache_to_path(dir, name, suffix="pkl", tag=""):
     h = hashlib.md5(f"{dir}|{tag}".encode()).hexdigest()[:6]
     dir.mkdir(parents=True, exist_ok=True)
     return dir / f"{name}_{h}.{suffix}"
+
+
+def cached(dir, name, fn, tag="", suffix="pkl", refresh=False):
+    """Load from cache if present, otherwise compute with fn(), save, and return."""
+    path = cache_to_path(dir, name, suffix=suffix, tag=tag)
+    if path.exists() and not refresh:
+        print(f"Loading {path}")
+        with open(path, "rb") as f:
+            return pickle.load(f)
+
+    obj = fn()
+    with open(path, "wb") as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"Saved {path}")
+    return obj
