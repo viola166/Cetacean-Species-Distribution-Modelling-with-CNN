@@ -98,7 +98,7 @@ class SpeciesCNN(nn.Module):
         return torch.sigmoid(z + torch.log1p(self.b ** 2))
 
     # prepare_data must be called before and its outputs serve as input + important for initializing model with correct num of input channels
-    def train_sdm(self, loaders, pi=None, device="cuda", loss_type="mlr", epochs=N_EPOCHS, run_dir=None):
+    def train_sdm_l2(self, loaders, pi=None, device="cuda", loss_type="mlr", epochs=N_EPOCHS, run_dir=None):
         """
         Train the CNN with the nnPU loss and keep the weights of the epoch with the best
         mean validation AUC.
@@ -125,9 +125,9 @@ class SpeciesCNN(nn.Module):
             opt = torch.optim.SGD(
                 [{"params": other},
                 {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],   # tune this lr
-                lr=1e-3, momentum=0.0, weight_decay=1e-3)
+                lr=1e-3, momentum=0.0, weight_decay=0.0)
         else:
-            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=1e-3)
+            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=0.0)
         
         # AdamW: per-parameter step scaling (helps with small/saturating gradients),
         # weight decay is decoupled from the gradient (applied directly to the weights)
@@ -223,6 +223,127 @@ class SpeciesCNN(nn.Module):
 
         # ---- restore the weights of the best epoch (not the last one) ----
         if best_state is not None:             # None if no epoch had a valid AUC
+            self.load_state_dict(best_state)
+        self.history = pd.DataFrame(history)
+        self.best_epoch, self.best_auc = best_epoch, best_auc
+        self.loss_type = loss_type
+        if run_dir is not None:
+            self.save_run(run_dir, pi)
+        return self
+
+
+    def train_sdm(self, loaders, pi=None, device="cuda", loss_type="mlr", epochs=N_EPOCHS,
+                  run_dir=None, l1_lambda=1e-3):                                  # L1: new arg
+        """
+        Train the CNN with the chosen loss (mlr / nnpu) plus an L1 (Lasso) penalty on the
+        weights, and keep the weights of the epoch with the best mean validation AUC.
+
+        loaders   : dict {"train", "val", "test"} -> DataLoader yielding (x, y, w)
+        pi        : (S,) tensor, class prior per species for nnPU
+        l1_lambda : strength of the L1 penalty, l1_lambda * sum(|w|)
+        """
+        self.to(device)
+        assert loss_type in ("mlr", "nnpu"), f"unknown loss_type: {loss_type}"
+        if loss_type == "nnpu":
+            assert pi is not None, "nnpu needs pi"
+            pi = pi.to(device).float()
+
+        # L1: weight_decay is set to 0 everywhere, because the built-in SGD weight_decay is L2.
+        # The L1 penalty is added to the loss instead.
+        other = [p for n, p in self.named_parameters() if n != "b"]
+        if loss_type == "mlr":
+            opt = torch.optim.SGD(
+                [{"params": other},
+                 {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],
+                lr=1e-3, momentum=0.0, weight_decay=0.0)                          # L1: was 1e-3
+        else:
+            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=0.0)  # L1: was 1e-3
+
+        sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[epochs // 2], gamma=0.1)
+
+        self.optimizer_info = {
+            "optimizer": type(opt).__name__,
+            "defaults": {k: list(v) if isinstance(v, tuple) else v
+                         for k, v in opt.defaults.items()
+                         if k in ("lr", "weight_decay", "betas", "eps", "momentum")},
+            "param_groups": [{"n_params": len(g["params"]),
+                              "lr": g["lr"],
+                              "weight_decay": g["weight_decay"]}
+                             for g in opt.param_groups],
+            "regularisation": {"type": "L1", "lambda": l1_lambda,                  # L1: record it
+                               "applied_to": "all parameters except b"},
+            "scheduler": type(sched).__name__,
+            "milestones": [epochs // 2],
+            "gamma": 0.1,
+            "epochs": epochs,
+        }
+
+        best_auc, best_state, best_epoch = -1.0, None, None
+        history = []
+
+        for epoch in range(epochs):
+            # ---- training pass ----
+            self.train()
+            running, running_l1, n = 0.0, 0.0, 0                                    # L1: track penalty
+            lr = opt.param_groups[0]["lr"]
+
+            n_batches = len(loaders["train"])
+            log_every = max(1, n_batches // 10)
+            for i, (x, y, w) in enumerate(loaders["train"]):
+                x, y, w = x.to(device), y.to(device), w.to(device)
+
+                logits = self.forward_logits(x)
+                data_loss = (mlr_loss(logits, y, self.b, w) if loss_type == "mlr"
+                             else nnpu_loss(logits, y, pi, w))
+
+                # L1: lambda * sum of absolute values of all regularised parameters
+                l1_pen = l1_lambda * sum(p.abs().sum() for p in other)
+                loss = data_loss + l1_pen
+
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+                # L1: log the data loss only, so values stay comparable to earlier runs
+                running += data_loss.item() * x.size(0)
+                running_l1 += l1_pen.item() * x.size(0)
+                n += x.size(0)
+
+                if i % log_every == 0:
+                    print(f"  ep {epoch} batch {i}/{n_batches} loss {data_loss.item():.4f} "
+                          f"running {running / n:.4f} l1 {l1_pen.item():.4f}", flush=True)
+            sched.step()
+
+            # ---- validation pass ----
+            self.eval()
+            logits, ys = [], []
+            with torch.no_grad():
+                for x, y, _ in loaders["val"]:
+                    logits.append(self.forward_logits(x.to(device)).cpu())
+                    ys.append(y)
+
+            p, y = torch.cat(logits).sigmoid().numpy(), torch.cat(ys).numpy()
+
+            aucs = {sp: roc_auc_score(y[:, s], p[:, s]) for s, sp in enumerate(SPECIES_LIST)
+                    if 0 < y[:, s].sum() < len(y)}
+            mean_auc = float(np.mean(list(aucs.values()))) if aucs else float("nan")
+
+            history.append({"epoch": epoch, "lr": lr,
+                            "train_loss": running / n,
+                            "l1_penalty": running_l1 / n,                           # L1: new column
+                            "val_mean_auc": mean_auc,
+                            **{f"auc_{sp}": v for sp, v in aucs.items()},
+                            "mean_c": float(self.c.mean()) if loss_type == "mlr" else float("nan")})
+
+            if mean_auc > best_auc:
+                best_auc = mean_auc
+                best_epoch = epoch
+                best_state = {k: v.detach().cpu().clone() for k, v in self.state_dict().items()}
+
+            print(epoch, f"loss {running / n:.4f}  l1 {running_l1 / n:.2f}  val AUC {mean_auc:.3f}",
+                  {k: round(v, 3) for k, v in aucs.items()})
+
+        if best_state is not None:
             self.load_state_dict(best_state)
         self.history = pd.DataFrame(history)
         self.best_epoch, self.best_auc = best_epoch, best_auc
