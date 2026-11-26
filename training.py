@@ -46,7 +46,7 @@ for i, (data, loaders, pi, transforms, n_stats) in enumerate(splits_processed):
         "batch_size": batch_size,
     }
 
-    model.train_sdm(loaders, pi=None, loss_type="mlr", run_dir=run_dir)
+    model.train_sdm(loaders, pi=pi, loss_type="nnpu", run_dir=run_dir)
 
     test_auc = model.evaluate_sdm(loaders["test"])          # evaluate once, after model selection
     with open(run_dir / "test_metrics.json", "w") as f:
