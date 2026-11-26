@@ -506,11 +506,11 @@ def nnpu_loss(logits, y, pi, w=None, gamma=1.0, beta=0.0):
     if w is None:
         w = torch.ones_like(y)
 
-    # loss_pos = F.softplus(-logits)   # l(f, +1)
-    # loss_neg = F.softplus(logits)    # l(f, -1)
+    loss_pos = F.softplus(-logits)   # l(f, +1)
+    loss_neg = F.softplus(logits)    # l(f, -1)
 
-    loss_pos = F.sigmoid(-logits)   # l(f, +1)
-    loss_neg = F.sigmoid(logits)    # l(f, -1)
+    # loss_pos = F.sigmoid(-logits)   # l(f, +1)
+    # loss_neg = F.sigmoid(logits)    # l(f, -1)
 
     n_pos = (w * pos).sum(0).clamp(min=1)
     n_unl = (w * unl).sum(0).clamp(min=1)
