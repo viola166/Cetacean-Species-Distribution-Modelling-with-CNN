@@ -118,27 +118,27 @@ class SpeciesCNN(nn.Module):
             assert pi is not None, "nnpu needs pi"
             pi = pi.to(device).float()                  # float32, avoids float64 promotion
 
-        # # plain SGD (no momentum); weight_decay shrinks the weights a little each step (regularisation)
-        # # opt = torch.optim.SGD(self.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
-        # other = [p for n, p in self.named_parameters() if n != "b"]
-        # if loss_type == "mlr":
-        #     opt = torch.optim.SGD(
-        #         [{"params": other},
-        #         {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],   # tune this lr
-        #         lr=1e-3, momentum=0.0, weight_decay=1e-3)
-        # else:
-        #     opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        # plain SGD (no momentum); weight_decay shrinks the weights a little each step (regularisation)
+        # opt = torch.optim.SGD(self.parameters(), lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        other = [p for n, p in self.named_parameters() if n != "b"]
+        if loss_type == "mlr":
+            opt = torch.optim.SGD(
+                [{"params": other},
+                {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],   # tune this lr
+                lr=1e-3, momentum=0.0, weight_decay=1e-3)
+        else:
+            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=1e-3)
         
         # AdamW: per-parameter step scaling (helps with small/saturating gradients),
         # weight decay is decoupled from the gradient (applied directly to the weights)
-        other = [p for n, p in self.named_parameters() if n != "b"]
-        if loss_type == "mlr":
-            opt = torch.optim.AdamW(
-                [{"params": other},
-                 {"params": [self.b], "lr": 1e-3, "weight_decay": 0.0}],   # b: no decay, own lr
-                lr=3e-4, weight_decay=1e-2)
-        else: # loss_type == "nnpu"
-            opt = torch.optim.AdamW(other, lr=3e-4, weight_decay=1e-2)
+        # other = [p for n, p in self.named_parameters() if n != "b"]
+        # if loss_type == "mlr":
+        #     opt = torch.optim.AdamW(
+        #         [{"params": other},
+        #          {"params": [self.b], "lr": 1e-3, "weight_decay": 0.0}],   # b: no decay, own lr
+        #         lr=3e-4, weight_decay=0.05)
+        # else: # loss_type == "nnpu"
+        #     opt = torch.optim.AdamW(other, lr=3e-4, weight_decay=0.05)
         # learning rate x 0.1 once, at the halfway epoch: big steps first, fine-tuning afterwards
         sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[epochs // 2], gamma=0.1)
 
