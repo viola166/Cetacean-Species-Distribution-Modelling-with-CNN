@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 from scipy.stats import spearmanr
 
-N_EPOCHS = 60
+N_EPOCHS = 30
 
 # ---------------------------------------------------------------- 2. Architecture
 # class ConvBlock(nn.Module):
@@ -47,13 +47,13 @@ class ConvBlock(nn.Module):
 
 
 class SpeciesCNN(nn.Module):
-    def __init__(self, in_channels=17, n_species=len(SPECIES_LIST), dropout=0.4, head_hidden=0):
+    def __init__(self, in_channels=18, n_species=len(SPECIES_LIST), dropout=0.4, head_hidden=0):
         super().__init__()
         self.backbone = nn.Sequential(
-            ConvBlock(in_channels, 64, strided_dilated=True, pool=False),
-            ConvBlock(64, 128, strided_dilated=False, pool=True),
-            ConvBlock(128, 256, strided_dilated=False, pool=False),
-            ConvBlock(256, 512, strided_dilated=False, final=True),  # last block: plain conv
+            ConvBlock(in_channels, 32, strided_dilated=True, pool=False),
+            ConvBlock(32, 64, strided_dilated=False, pool=True),
+            ConvBlock(64, 128, strided_dilated=False, pool=False),
+            ConvBlock(128, 256, strided_dilated=False, final=True),  # last block: plain conv
         )
         self.in_channels = in_channels
         self.dropout = nn.Dropout(dropout)
