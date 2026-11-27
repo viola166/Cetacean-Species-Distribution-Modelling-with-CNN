@@ -50,10 +50,10 @@ class SpeciesCNN(nn.Module):
     def __init__(self, in_channels=18, n_species=len(SPECIES_LIST), dropout=0.4, head_hidden=0):
         super().__init__()
         self.backbone = nn.Sequential(
-            ConvBlock(in_channels, 32, strided_dilated=True, pool=False),
-            ConvBlock(32, 64, strided_dilated=False, pool=True),
-            ConvBlock(64, 128, strided_dilated=False, pool=False),
-            ConvBlock(128, 256, strided_dilated=False, final=True),  # last block: plain conv
+            ConvBlock(in_channels, 64, strided_dilated=True, pool=False),
+            ConvBlock(64, 128, strided_dilated=False, pool=True),
+            ConvBlock(128, 256, strided_dilated=False, pool=False),
+            ConvBlock(256, 512, strided_dilated=False, final=True),  # last block: plain conv
         )
         self.in_channels = in_channels
         self.dropout = nn.Dropout(dropout)
@@ -63,10 +63,10 @@ class SpeciesCNN(nn.Module):
         self.head_hidden = head_hidden
 
         if head_hidden == 0:
-            self.heads = nn.ModuleList([nn.Linear(256, 1) for _ in range(n_species)])
+            self.heads = nn.ModuleList([nn.Linear(512, 1) for _ in range(n_species)])
         else:
             self.heads = nn.ModuleList([
-                nn.Sequential(nn.Linear(256, head_hidden), nn.ReLU(), nn.Linear(head_hidden, 1))
+                nn.Sequential(nn.Linear(512, head_hidden), nn.ReLU(), nn.Linear(head_hidden, 1))
                 for _ in range(n_species)
             ])
 
@@ -255,9 +255,9 @@ class SpeciesCNN(nn.Module):
             opt = torch.optim.SGD(
                 [{"params": other},
                  {"params": [self.b], "lr": 1e-2, "weight_decay": 0.0}],
-                lr=1e-3, momentum=0.0, weight_decay=0.0)                          # L1: was 1e-3
+                lr=1e-3, momentum=0.5, weight_decay=0.0)                          # L1: was 1e-3
         else:
-            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.0, weight_decay=0.0)  # L1: was 1e-3
+            opt = torch.optim.SGD(other, lr=1e-3, momentum=0.5, weight_decay=0.0)  # L1: was 1e-3
 
         sched = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[epochs // 2], gamma=0.1)
 
