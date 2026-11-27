@@ -63,10 +63,10 @@ class SpeciesCNN(nn.Module):
         self.head_hidden = head_hidden
 
         if head_hidden == 0:
-            self.heads = nn.ModuleList([nn.Linear(512, 1) for _ in range(n_species)])
+            self.heads = nn.ModuleList([nn.Linear(256, 1) for _ in range(n_species)])
         else:
             self.heads = nn.ModuleList([
-                nn.Sequential(nn.Linear(512, head_hidden), nn.ReLU(), nn.Linear(head_hidden, 1))
+                nn.Sequential(nn.Linear(256, head_hidden), nn.ReLU(), nn.Linear(head_hidden, 1))
                 for _ in range(n_species)
             ])
 
